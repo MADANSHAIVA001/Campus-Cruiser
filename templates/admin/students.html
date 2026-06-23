@@ -1,0 +1,176 @@
+{% extends "admin/layout.html" %}
+{% set active = 'students' %}
+{% block title %}Students — Admin{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Manage Students</h1><p>Admin adds students. They login with USN or Admission No. and set their own password on first login.</p></div>
+<div class="section-header">
+  <h2><i class="ti ti-users" style="color:var(--purple)"></i> Students ({{ students|length }})</h2>
+  <div style="display:flex;gap:8px">
+    <input type="text" id="searchInput" placeholder="Search name / USN / email..." style="width:220px;padding:7px 12px" oninput="filterTable()">
+    <button class="btn btn-primary" onclick="openModal('addStudentModal')"><i class="ti ti-plus"></i> Add Student</button>
+  </div>
+</div>
+<div class="table-card">
+  {% if students %}
+  <table id="studentsTable">
+    <thead><tr><th>Name</th><th>USN / Adm No.</th><th>Dept / Sem</th><th>Boarding Point</th><th>Bus</th><th>Temp PW</th><th>Actions</th></tr></thead>
+    <tbody>
+    {% for s in students %}
+    <tr>
+      <td><strong>{{ s.name }}</strong><br><span style="font-size:11px;color:var(--text3)">{{ s.email }}</span></td>
+      <td>
+        {% if s.usn %}<span class="badge badge-blue">{{ s.usn }}</span><br>{% endif %}
+        {% if s.admission_no %}<span style="font-size:11px;color:var(--text3)">Adm: {{ s.admission_no }}</span>{% endif %}
+        {% if not s.usn and not s.admission_no %}—{% endif %}
+      </td>
+      <td>{{ s.department or '—' }}<br><span style="font-size:11px;color:var(--text3)">Sem {{ s.semester or '—' }}</span></td>
+      <td>
+        {% if s.boarding_point %}
+        <span class="badge badge-purple">📍 {{ s.boarding_point }}</span>
+        {% else %}
+        <span style="color:var(--text3);font-size:12px">Not set</span>
+        {% endif %}
+        <button class="btn btn-sm" style="margin-top:4px;display:block" onclick="openBoardingModal({{ s.id }},'{{ s.name }}','{{ s.boarding_point or '' }}')">
+          <i class="ti ti-edit"></i> Set
+        </button>
+      </td>
+      <td>{% if s.bus_reg %}<span class="badge badge-green">{{ s.bus_reg }}</span>{% else %}<span style="color:var(--text3)">Unassigned</span>{% endif %}</td>
+      <td><code style="font-size:11px;background:var(--bg3);padding:2px 6px;border-radius:4px;color:var(--amber)">{{ s.temp_password or '—' }}</code></td>
+      <td style="display:flex;gap:5px;flex-wrap:wrap">
+        <a href="/admin/students/academics/{{ s.id }}" class="btn btn-sm btn-primary"><i class="ti ti-book"></i> Academics</a>
+        <button class="btn btn-sm" onclick="openAssignStudent({{ s.id }},'{{ s.name }}','{{ s.bus_id or '' }}','{{ s.boarding_point or '' }}')"><i class="ti ti-bus"></i> Bus</button>
+        <button class="btn btn-sm btn-amber" onclick="openResetStudent({{ s.id }},'{{ s.name }}')"><i class="ti ti-key"></i></button>
+        <form method="POST" action="/admin/students/delete/{{ s.id }}" onsubmit="return confirm('Remove {{ s.name }}?')">
+          <button class="btn btn-sm btn-danger"><i class="ti ti-trash"></i></button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state"><i class="ti ti-users"></i><p>No students added yet.</p></div>
+  {% endif %}
+</div>
+
+<!-- Add Student Modal -->
+<div class="modal-overlay" id="addStudentModal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-title"><i class="ti ti-user-plus"></i> Add New Student</div>
+    <form method="POST" action="/admin/students/add">
+      <div class="form-row">
+        <div class="form-group"><label>Full Name</label><input name="name" placeholder="Student name" required></div>
+        <div class="form-group"><label>Email</label><input type="email" name="email" placeholder="student@email.com" required></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>USN</label><input name="usn" placeholder="e.g. 1XX22CS001"></div>
+        <div class="form-group"><label>Admission No.</label><input name="admission_no" placeholder="ADM2022001"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Phone</label><input name="phone" placeholder="9876543210"></div>
+        <div class="form-group"><label>Department</label><input name="department" placeholder="Computer Science"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Semester</label><select name="semester"><option value="">—</option>{% for i in range(1,9) %}<option value="{{ i }}">Semester {{ i }}</option>{% endfor %}</select></div>
+        <div class="form-group"><label>Boarding Point</label><input name="boarding_point" placeholder="e.g. Rajajinagar Circle"></div>
+      </div>
+      <div class="form-group"><label>Temp Password</label><input name="temp_password" value="Student@123"></div>
+      <div style="background:var(--blue-dim);border:1px solid var(--blue);border-radius:var(--radius);padding:10px 12px;font-size:12px;color:var(--blue);margin-bottom:4px">
+        <i class="ti ti-info-circle"></i> Student logs in with <strong>USN or Admission No.</strong> and temp password, then must set a new password.
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" onclick="closeModal('addStudentModal')">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i> Add Student</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Assign Bus Modal -->
+<div class="modal-overlay" id="assignStudentModal">
+  <div class="modal">
+    <div class="modal-title"><i class="ti ti-bus"></i> Assign Bus to Student</div>
+    <form method="POST" action="/admin/students/assign_bus">
+      <input type="hidden" name="student_id" id="as_id">
+      <div class="form-group"><label>Student</label><input type="text" id="as_name" disabled style="opacity:.6"></div>
+      <div class="form-group">
+        <label>Select Bus</label>
+        <select name="bus_id">
+          <option value="">— Remove assignment —</option>
+          {% for b in buses %}<option value="{{ b.id }}">{{ b.reg_no }}{% if b.route_name %} — {{ b.route_name }}{% endif %}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Boarding Point</label>
+        <input type="text" name="boarding_point" id="as_boarding" placeholder="e.g. Malleshwaram 8th Cross">
+        <div class="form-hint">The stop where this student boards the bus</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" onclick="closeModal('assignStudentModal')">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i> Assign</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Boarding Point Only Modal -->
+<div class="modal-overlay" id="boardingModal">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-title"><i class="ti ti-map-pin"></i> Set Boarding Point</div>
+    <form method="POST" id="boardingForm">
+      <div class="form-group"><label>Student</label><input type="text" id="bp_name" disabled style="opacity:.6"></div>
+      <div class="form-group">
+        <label>Boarding Point</label>
+        <input type="text" name="boarding_point" id="bp_value" placeholder="e.g. Rajajinagar Circle, Stop 4" required>
+        <div class="form-hint">Enter the exact stop name where this student boards</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" onclick="closeModal('boardingModal')">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i> Save Boarding Point</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Reset Password Modal -->
+<div class="modal-overlay" id="resetStudentModal">
+  <div class="modal">
+    <div class="modal-title"><i class="ti ti-key"></i> Reset Student Password</div>
+    <form method="POST" id="resetStudentForm">
+      <div class="form-group"><label>Student</label><input type="text" id="rs_name" disabled style="opacity:.6"></div>
+      <div class="form-group"><label>New Temporary Password</label><input name="temp_password" placeholder="e.g. Student@123" required></div>
+      <div style="font-size:12px;color:var(--amber);margin-bottom:4px"><i class="ti ti-alert-triangle"></i> Student will be required to change this on next login.</div>
+      <div class="modal-footer">
+        <button type="button" class="btn" onclick="closeModal('resetStudentModal')">Cancel</button>
+        <button type="submit" class="btn btn-amber"><i class="ti ti-check"></i> Reset</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openAssignStudent(id,name,busId,boarding){
+  document.getElementById('as_id').value=id;
+  document.getElementById('as_name').value=name;
+  document.getElementById('as_boarding').value=boarding||'';
+  openModal('assignStudentModal');
+}
+function openResetStudent(id,name){
+  document.getElementById('resetStudentForm').action='/admin/students/set-password/'+id;
+  document.getElementById('rs_name').value=name;
+  openModal('resetStudentModal');
+}
+function openBoardingModal(id,name,current){
+  document.getElementById('boardingForm').action='/admin/students/update_boarding/'+id;
+  document.getElementById('bp_name').value=name;
+  document.getElementById('bp_value').value=current||'';
+  openModal('boardingModal');
+}
+function filterTable(){
+  const q=document.getElementById('searchInput').value.toLowerCase();
+  document.querySelectorAll('#studentsTable tbody tr').forEach(r=>{
+    r.style.display=r.textContent.toLowerCase().includes(q)?'':'none';
+  });
+}
+</script>
+{% endblock %}

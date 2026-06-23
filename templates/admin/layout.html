@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-logo">
+        {% if college.logo %}
+          <img src="{{ college.logo }}" class="brand-logo-img" alt="Logo">
+        {% else %}
+          <div class="brand-logo-icon admin-icon"><i class="ti ti-shield-check" style="font-size:18px"></i></div>
+        {% endif %}
+        <div class="brand-texts">
+          <div class="brand-college">{{ college.name }}</div>
+          <div class="brand-role">Admin Panel</div>
+        </div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">Main</div>
+      <a href="/admin" class="nav-item {% if active=='dashboard' %}active-admin{% endif %}"><i class="ti ti-layout-dashboard"></i> Dashboard</a>
+      <a href="/admin/tracking" class="nav-item {% if active=='tracking' %}active-admin{% endif %}"><i class="ti ti-map-pin"></i> Live Tracking</a>
+      <div class="nav-section">Manage</div>
+      <a href="/admin/buses" class="nav-item {% if active=='buses' %}active-admin{% endif %}"><i class="ti ti-bus"></i> Buses</a>
+      <a href="/admin/drivers" class="nav-item {% if active=='drivers' %}active-admin{% endif %}"><i class="ti ti-user-check"></i> Drivers</a>
+      <a href="/admin/students" class="nav-item {% if active=='students' %}active-admin{% endif %}"><i class="ti ti-users"></i> Students</a>
+      <a href="/admin/routes" class="nav-item {% if active=='routes' %}active-admin{% endif %}"><i class="ti ti-route"></i> Routes</a>
+      <div class="nav-section">More</div>
+      <a href="/admin/notifications" class="nav-item {% if active=='notifications' %}active-admin{% endif %}"><i class="ti ti-bell"></i> Notifications</a>
+      <a href="/admin/settings" class="nav-item {% if active=='settings' %}active-admin{% endif %}"><i class="ti ti-settings"></i> Settings</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-user"><i class="ti ti-user" style="font-size:13px"></i> {{ session.name }}</div>
+      <div class="theme-toggle" onclick="toggleTheme()" style="margin-bottom:6px">
+        <i class="ti ti-sun theme-icon"></i>
+        <span class="theme-label">Light mode</span>
+      </div>
+      <a href="/change-password" class="nav-item" style="font-size:12px"><i class="ti ti-lock"></i> Change Password</a>
+      <a href="/logout" class="nav-item danger"><i class="ti ti-logout"></i> Logout</a>
+    </div>
+  </aside>
+  <main class="main-content">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat,msg in messages %}
+        <div class="alert alert-{{cat}}" style="margin-bottom:18px">
+          <i class="ti ti-{% if cat=='success' %}check-circle{% else %}alert-circle{% endif %}"></i> {{msg}}
+        </div>
+      {% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% endblock %}

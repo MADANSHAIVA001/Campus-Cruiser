@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+{% block title %}My Location — Driver{% endblock %}
+{% block extra_styles %}
+.loc-wrap{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+.loc-header{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:14px;flex-shrink:0;z-index:10}
+.back-btn{width:36px;height:36px;border-radius:50%;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text2);text-decoration:none;flex-shrink:0}
+.back-btn:hover{background:var(--surface2);text-decoration:none;color:var(--text)}
+#map{flex:1;min-height:0;z-index:1}
+.bottom-panel{background:var(--bg2);border-top:1px solid var(--border);padding:14px 20px;flex-shrink:0}
+.coord-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px}
+.coord-tile{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px}
+.coord-label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+.coord-val{font-size:14px;font-weight:700;color:var(--text);font-family:monospace}
+.gps-btn{width:100%;padding:13px;background:var(--green);border:none;border-radius:var(--radius-lg);color:#fff;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .15s}
+.gps-btn:hover{opacity:.88}
+.gps-btn.active{background:var(--red)}
+.gps-btn:disabled{opacity:.45;cursor:not-allowed}
+.status-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:var(--radius);margin-bottom:12px;font-size:13px;font-weight:600}
+.status-bar.active{background:var(--green-dim);border:1px solid var(--green);color:var(--green)}
+.status-bar.inactive{background:var(--surface);border:1px solid var(--border);color:var(--text2)}
+.status-bar.waiting{background:var(--amber-dim);border:1px solid var(--amber);color:var(--amber)}
+.gps-dot{width:8px;height:8px;border-radius:50%;background:currentColor;animation:blink 1.2s ease-in-out infinite;flex-shrink:0}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes markerPulse{0%{transform:scale(1);opacity:.7}50%{transform:scale(1.5);opacity:.2}100%{transform:scale(1);opacity:.7}}
+@media(max-width:600px){.coord-grid{grid-template-columns:1fr 1fr}}
+{% endblock %}
+{% block body %}
+<div class="loc-wrap">
+
+  <!-- Header -->
+  <div class="loc-header">
+    <a href="/driver" class="back-btn"><i class="ti ti-arrow-left" style="font-size:16px"></i></a>
+    <div style="width:42px;height:42px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">📍</div>
+    <div style="flex:1">
+      <div style="font-weight:700;font-size:15px;color:var(--text)">My Location</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:1px">
+        {{ bus.reg_no if bus else 'No bus assigned' }}
+        {% if bus and bus.route_name %} · {{ bus.route_name }}{% endif %}
+      </div>
+    </div>
+    {% if active_trip %}
+    <span class="badge badge-green" style="flex-shrink:0">● Trip Active</span>
+    {% else %}
+    <span class="badge badge-gray" style="flex-shrink:0">No Active Trip</span>
+    {% endif %}
+  </div>
+
+  <!-- Map -->
+  <div id="map"></div>
+
+  <!-- Bottom Panel -->
+  <div class="bottom-panel">
+    <!-- Status -->
+    <div class="status-bar inactive" id="statusBar">
+      <div class="gps-dot"></div>
+      <span id="statusText">GPS not started — tap Enable GPS below</span>
+    </div>
+
+    <!-- Coordinates -->
+    <div class="coord-grid">
+      <div class="coord-tile">
+        <div class="coord-label">Latitude</div>
+        <div class="coord-val" id="dispLat">—</div>
+      </div>
+      <div class="coord-tile">
+        <div class="coord-label">Longitude</div>
+        <div class="coord-val" id="dispLng">—</div>
+      </div>
+      <div class="coord-tile">
+        <div class="coord-label">Speed</div>
+        <div class="coord-val"><span id="dispSpeed">0</span> <span style="font-size:11px;font-weight:400;color:var(--text2)">km/h</span></div>
+      </div>
+      <div class="coord-tile">
+        <div class="coord-label">Accuracy</div>
+        <div class="coord-val"><span id="dispAcc">—</span> <span style="font-size:11px;font-weight:400;color:var(--text2)">m</span></div>
+      </div>
+    </div>
+
+    <!-- GPS Toggle Button -->
+    {% if not active_trip %}
+    <div style="background:var(--amber-dim);border:1px solid var(--amber);border-radius:var(--radius);padding:10px 14px;font-size:12px;color:var(--amber);margin-bottom:12px;display:flex;align-items:center;gap:8px">
+      <i class="ti ti-alert-triangle"></i>
+      Start a trip first to broadcast your location to students and admin.
+    </div>
+    {% endif %}
+
+    <button class="gps-btn" id="gpsBtn" onclick="toggleGPS()">
+      <i class="ti ti-map-pin" style="font-size:18px"></i>
+      <span id="gpsBtnText">Enable GPS & Share Location</span>
+    </button>
+  </div>
+
+</div>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const hasActiveTrip = {{ 'true' if active_trip else 'false' }};
+
+// Map
+const map = L.map('map', {zoomControl:true, attributionControl:false}).setView([12.9716, 77.5946], 13);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {subdomains:'abcd', maxZoom:20}).addTo(map);
+L.control.attribution({position:'bottomleft', prefix:'© OpenStreetMap · CARTO'}).addTo(map);
+
+// Driver icon
+const driverIcon = L.divIcon({
+  className:'',
+  html:`<div style="position:relative;width:52px;height:52px">
+    <div style="position:absolute;inset:-10px;border-radius:50%;background:rgba(34,201,122,.2);animation:markerPulse 2s ease-in-out infinite"></div>
+    <div style="position:absolute;inset:0;border-radius:50%;background:#22c97a;border:3px solid #fff;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 4px 14px rgba(0,0,0,.5)">🚍</div>
+  </div>`,
+  iconSize:[52,52], iconAnchor:[26,26], popupAnchor:[0,-30]
+});
+
+let myMarker = null, watchId = null, path = [], pathLine = null;
+let isGPSActive = false;
+
+function setStatus(type, text) {
+  const bar = document.getElementById('statusBar');
+  bar.className = 'status-bar ' + type;
+  document.getElementById('statusText').textContent = text;
+}
+
+function toggleGPS() {
+  if(isGPSActive) {
+    stopGPS();
+  } else {
+    startGPS();
+  }
+}
+
+function startGPS() {
+  if(!navigator.geolocation) {
+    alert('GPS is not supported on this device.');
+    return;
+  }
+  setStatus('waiting', 'Requesting GPS permission...');
+  document.getElementById('gpsBtnText').textContent = 'Getting location...';
+  document.getElementById('gpsBtn').disabled = true;
+
+  watchId = navigator.geolocation.watchPosition(
+    onPosition,
+    onError,
+    {enableHighAccuracy: true, maximumAge: 2000, timeout: 15000}
+  );
+}
+
+function stopGPS() {
+  if(watchId !== null) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+  }
+  isGPSActive = false;
+  setStatus('inactive', 'GPS stopped — location no longer shared');
+  const btn = document.getElementById('gpsBtn');
+  btn.className = 'gps-btn';
+  btn.disabled = false;
+  document.getElementById('gpsBtnText').textContent = 'Enable GPS & Share Location';
+}
+
+function onPosition(pos) {
+  const lat = pos.coords.latitude;
+  const lng = pos.coords.longitude;
+  const speed = pos.coords.speed ? (pos.coords.speed * 3.6) : 0;
+  const acc = pos.coords.accuracy ? Math.round(pos.coords.accuracy) : 0;
+
+  // First fix
+  if(!isGPSActive) {
+    isGPSActive = true;
+    map.setView([lat, lng], 16);
+    const btn = document.getElementById('gpsBtn');
+    btn.className = 'gps-btn active';
+    btn.disabled = false;
+    document.getElementById('gpsBtnText').textContent = 'Stop Sharing Location';
+  }
+
+  setStatus('active', `Live · sharing every 2s · accuracy ±${acc}m`);
+
+  // Update displays
+  document.getElementById('dispLat').textContent = lat.toFixed(6);
+  document.getElementById('dispLng').textContent = lng.toFixed(6);
+  document.getElementById('dispSpeed').textContent = speed.toFixed(1);
+  document.getElementById('dispAcc').textContent = acc;
+
+  const latlng = [lat, lng];
+
+  // Move marker
+  if(!myMarker) {
+    myMarker = L.marker(latlng, {icon: driverIcon}).addTo(map);
+    myMarker.bindPopup(`<b>📍 My Location</b><br>${lat.toFixed(5)}, ${lng.toFixed(5)}<br>Speed: ${speed.toFixed(1)} km/h`).openPopup();
+  } else {
+    myMarker.setLatLng(latlng);
+    myMarker.getPopup().setContent(`<b>📍 My Location</b><br>${lat.toFixed(5)}, ${lng.toFixed(5)}<br>Speed: ${speed.toFixed(1)} km/h`);
+  }
+  map.panTo(latlng, {animate:true, duration:0.5});
+
+  // Path trail
+  path.push(latlng);
+  if(path.length > 300) path.shift();
+  if(pathLine) map.removeLayer(pathLine);
+  if(path.length > 1) {
+    pathLine = L.polyline(path, {color:'#22c97a', weight:3, opacity:0.4, dashArray:'6 4'}).addTo(map);
+  }
+
+  // Send to server (only if trip active)
+  if(hasActiveTrip) {
+    fetch('/driver/location/update', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({lat, lng, speed: speed.toFixed(1)})
+    }).catch(()=>{});
+  }
+}
+
+function onError(err) {
+  isGPSActive = false;
+  document.getElementById('gpsBtn').disabled = false;
+  document.getElementById('gpsBtn').className = 'gps-btn';
+  document.getElementById('gpsBtnText').textContent = 'Enable GPS & Share Location';
+  if(err.code === 1) {
+    setStatus('inactive', '❌ Location permission denied — allow in browser settings');
+  } else if(err.code === 2) {
+    setStatus('waiting', '⚠ GPS unavailable — try again');
+  } else {
+    setStatus('waiting', '⚠ GPS timeout — tap to retry');
+  }
+}
+
+// Auto-start GPS if trip is active
+{% if active_trip %}
+window.addEventListener('load', () => {
+  setTimeout(startGPS, 800);
+});
+{% endif %}
+
+window.addEventListener('beforeunload', () => {
+  if(watchId !== null) navigator.geolocation.clearWatch(watchId);
+});
+</script>
+{% endblock %}

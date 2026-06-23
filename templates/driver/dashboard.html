@@ -1,0 +1,387 @@
+{% extends "base.html" %}
+{% block title %}Driver Dashboard{% endblock %}
+{% block body %}
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-logo">
+        {% if college.logo %}<img src="{{ college.logo }}" class="brand-logo-img" alt="Logo">
+        {% else %}<div class="brand-logo-icon driver-icon"><i class="ti ti-bus" style="font-size:18px"></i></div>{% endif %}
+        <div class="brand-texts">
+          <div class="brand-college">{{ college.name }}</div>
+          <div class="brand-role">Driver Panel</div>
+        </div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">Navigation</div>
+      <a href="#trip-section" class="nav-item active-driver" onclick="showTab('trip')"><i class="ti ti-home"></i> Dashboard</a>
+      <a href="#students-section" class="nav-item" id="nav-students" onclick="showTab('students')"><i class="ti ti-users"></i> My Students
+        <span class="badge badge-blue" style="margin-left:auto">{{ student_count }}</span>
+      </a>
+      <a href="/driver/location-page" class="nav-item"><i class="ti ti-map-pin"></i> My Location</a>
+      <a href="/change-password" class="nav-item"><i class="ti ti-lock"></i> Change Password</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-user"><i class="ti ti-user" style="font-size:13px"></i> {{ session.name }}</div>
+      <div class="theme-toggle" onclick="toggleTheme()" style="margin-bottom:6px">
+        <i class="ti ti-sun theme-icon"></i><span class="theme-label">Light mode</span>
+      </div>
+      <a href="/logout" class="nav-item danger"><i class="ti ti-logout"></i> Logout</a>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat,msg in messages %}
+        <div class="alert alert-{{cat}}"><i class="ti ti-{% if cat=='success' %}check-circle{% else %}alert-circle{% endif %}"></i> {{msg}}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <!-- ── TAB: DASHBOARD ─────────────────────────────── -->
+    <div id="tab-trip">
+      <div class="page-header">
+        <h1>Good day, {{ session.name }} 👋</h1>
+        <p>{{ college.name }} · Driver Panel</p>
+      </div>
+
+      <!-- GPS Permission Prompt -->
+      <div class="gps-prompt" id="gpsPrompt" style="display:none">
+        <i class="ti ti-map-pin" style="font-size:28px;color:var(--amber);flex-shrink:0;margin-top:2px"></i>
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:15px;color:var(--amber)">Enable GPS Location</div>
+          <p style="margin-top:4px;font-size:13px;color:var(--text2)">Campus Cruiser needs your location to broadcast bus position to students and admin. Please allow location access.</p>
+          <button onclick="requestGPS()" class="btn btn-amber" style="margin-top:10px"><i class="ti ti-map-pin"></i> Enable GPS Now</button>
+        </div>
+      </div>
+
+      {% if not bus %}
+      <div style="background:var(--amber-dim);border:1px solid var(--amber);border-radius:var(--radius-lg);padding:20px;color:var(--amber);margin-bottom:20px">
+        <strong><i class="ti ti-alert-triangle"></i> No bus assigned yet.</strong>
+        <p style="margin-top:6px;font-size:13px;opacity:.8">Please contact your admin to get a bus assigned.</p>
+      </div>
+      {% else %}
+
+      <!-- Trip Buttons -->
+      <div class="trip-actions">
+        {% if not active_trip %}
+        <form method="POST" action="/driver/trip/start">
+          <button type="submit" class="trip-btn trip-btn-start"><i class="ti ti-player-play" style="font-size:20px"></i> Start Trip</button>
+        </form>
+        <button class="trip-btn trip-btn-end" disabled style="opacity:.35;cursor:not-allowed"><i class="ti ti-player-stop" style="font-size:20px"></i> End Trip</button>
+        {% else %}
+        <button class="trip-btn trip-btn-start" disabled style="opacity:.35;cursor:not-allowed"><i class="ti ti-player-play" style="font-size:20px"></i> Start Trip</button>
+        <form method="POST" action="/driver/trip/end" style="display:contents">
+          <button type="submit" class="trip-btn trip-btn-end" onclick="return confirm('End this trip?')"><i class="ti ti-player-stop" style="font-size:20px"></i> End Trip</button>
+        </form>
+        {% endif %}
+      </div>
+
+      <!-- Live GPS status - updates automatically when GPS sends -->
+      <div id="gpsStatusBar" class="gps-status" style="{% if not active_trip %}background:var(--surface);border-color:var(--border);color:var(--text2){% endif %}">
+        <div class="gps-dot" style="{% if not active_trip %}background:var(--text3);animation:none{% endif %}"></div>
+        <span id="gpsStatusText">{% if active_trip %}GPS active — broadcasting location{% else %}GPS not started — Start Trip to begin{% endif %}</span>
+        {% if active_trip %}
+        <span style="margin-left:auto;font-size:11px;color:var(--green)" id="gpsLastUpdate">
+          {{ active_trip.last_updated[11:16] if active_trip.last_updated else '' }}
+        </span>
+        {% endif %}
+      </div>
+
+      <form method="POST" action="/driver/sos" onsubmit="return confirm('Send SOS emergency alert to admin?')">
+        <button type="submit" class="sos-btn"><i class="ti ti-alert-triangle" style="font-size:22px"></i> SOS — Emergency Alert</button>
+      </form>
+
+      <!-- Bus & GPS Info -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
+        <div class="info-card">
+          <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Bus Details</div>
+          <div class="info-row"><span class="info-label"><i class="ti ti-bus"></i> Bus Reg.</span><span class="info-val">{{ bus.reg_no }}</span></div>
+          <div class="info-row"><span class="info-label"><i class="ti ti-users"></i> Students</span>
+            <span class="info-val">
+              {% if active_trip %}<span id="boardedCount">0</span>/{% endif %}{{ student_count }}
+              {% if active_trip %}<span style="font-size:11px;color:var(--text3)"> boarded</span>{% endif %}
+            </span>
+          </div>
+          <div class="info-row"><span class="info-label"><i class="ti ti-route"></i> Route</span><span class="info-val">{{ bus.route_name or '—' }}</span></div>
+          <div class="info-row"><span class="info-label"><i class="ti ti-circle"></i> Status</span>
+            {% if active_trip %}<span class="badge badge-green">● Running</span>{% else %}<span class="badge badge-gray">Idle</span>{% endif %}
+          </div>
+        </div>
+        <div class="info-card">
+          <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">GPS Status</div>
+          {% if active_trip %}
+          <div class="info-row"><span class="info-label"><i class="ti ti-clock"></i> Started</span><span class="info-val">{{ active_trip.start_time[11:16] if active_trip.start_time else '—' }}</span></div>
+          <div class="info-row"><span class="info-label"><i class="ti ti-map-pin"></i> Latitude</span><span class="info-val" id="dispLat" style="font-family:monospace;font-size:12px">{{ active_trip.lat or 'Waiting...' }}</span></div>
+          <div class="info-row"><span class="info-label"><i class="ti ti-map-pin"></i> Longitude</span><span class="info-val" id="dispLng" style="font-family:monospace;font-size:12px">{{ active_trip.lng or 'Waiting...' }}</span></div>
+          <div class="info-row"><span class="info-label"><i class="ti ti-gauge"></i> Speed</span><span class="info-val" id="dispSpeed">{{ active_trip.speed or '0' }} km/h</span></div>
+          {% else %}
+          <div class="empty-state" style="padding:20px"><i class="ti ti-map-pin-off"></i><p>Start trip to activate GPS</p></div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Route Stops -->
+      {% if route %}
+      <div class="section-title"><i class="ti ti-route" style="color:var(--amber)"></i> Route — {{ route.name }}</div>
+      <div class="table-card" style="margin-bottom:20px">
+        {% set stops = route.stops | fromjson %}
+        {% for stop in stops %}
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border){% if loop.last %};border-bottom:none{% endif %}">
+          <div style="width:26px;height:26px;border-radius:50%;background:{% if loop.first or loop.last %}var(--blue-dim){% else %}var(--surface){% endif %};border:1.5px solid {% if loop.first or loop.last %}var(--blue){% else %}var(--border2){% endif %};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:{% if loop.first or loop.last %}var(--blue){% else %}var(--text3){% endif %};flex-shrink:0">{{ loop.index }}</div>
+          <span style="font-size:13px;color:{% if loop.first or loop.last %}var(--text){% else %}var(--text2){% endif %}">{{ stop }}</span>
+          <!-- Show count of students boarding at this stop -->
+          {% set stop_students = students_list | selectattr('boarding_point', 'equalto', stop) | list %}
+          {% if stop_students %}
+          <span class="badge badge-purple" style="margin-left:auto">{{ stop_students|length }} student{{ 's' if stop_students|length > 1 }}</span>
+          {% endif %}
+          {% if loop.first %}<span class="badge badge-green" style="{% if stop_students %}{% else %}margin-left:auto{% endif %}">Start</span>{% endif %}
+          {% if loop.last %}<span class="badge badge-blue" style="{% if stop_students %}{% else %}margin-left:auto{% endif %}">End</span>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% endif %}
+
+      <!-- Notifications -->
+      <div class="section-title"><i class="ti ti-bell" style="color:var(--amber)"></i> Notifications</div>
+      <div class="table-card">
+        {% if notifications %}{% for n in notifications %}
+        <div class="notif-item">
+          <div style="width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:{% if n.type=='danger' %}var(--red-dim){% elif n.type=='warning' %}var(--amber-dim){% elif n.type=='success' %}var(--green-dim){% else %}var(--blue-dim){% endif %}">
+            <i class="ti ti-{% if n.type=='danger' %}alert-triangle{% elif n.type=='warning' %}alert-circle{% else %}info-circle{% endif %}" style="font-size:14px;color:{% if n.type=='danger' %}var(--red){% elif n.type=='warning' %}var(--amber){% else %}var(--blue){% endif %}"></i>
+          </div>
+          <div><div style="font-weight:600;font-size:13px;color:var(--text)">{{ n.title }}</div><div style="font-size:12px;color:var(--text2);margin-top:2px">{{ n.message }}</div><div style="font-size:11px;color:var(--text3);margin-top:3px">{{ n.created_at[:16] }}</div></div>
+        </div>
+        {% endfor %}{% else %}
+        <div class="empty-state" style="padding:20px"><p>No notifications.</p></div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- ── TAB: STUDENTS LIST ─────────────────────────── -->
+    <div id="tab-students" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+        <div>
+          <h1>Students on My Bus</h1>
+          <p>{{ bus.reg_no if bus else '—' }} · {{ student_count }} students assigned
+            {% if active_trip %} · <span id="boardedCount2" style="color:var(--green);font-weight:600">0</span> boarded{% endif %}
+          </p>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="studentSearch" placeholder="Search name / USN / stop..." style="width:220px;padding:7px 12px" oninput="filterStudents()">
+          <select id="stopFilter" onchange="filterStudents()" style="width:180px;padding:7px 12px">
+            <option value="">All boarding points</option>
+            {% set seen_stops = [] %}
+            {% for s in students_list %}
+              {% if s.boarding_point and s.boarding_point not in seen_stops %}
+                {% set _ = seen_stops.append(s.boarding_point) %}
+                <option value="{{ s.boarding_point }}">{{ s.boarding_point }}</option>
+              {% endif %}
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      {% if not students_list %}
+      <div class="table-card">
+        <div class="empty-state"><i class="ti ti-users"></i><p>No students assigned to this bus yet. Admin needs to assign students.</p></div>
+      </div>
+      {% else %}
+
+      <!-- Group by boarding point -->
+      {% set boarding_points = [] %}
+      {% for s in students_list %}
+        {% set bp = s.boarding_point or 'No boarding point set' %}
+        {% if bp not in boarding_points %}{% set _ = boarding_points.append(bp) %}{% endif %}
+      {% endfor %}
+
+      {% for bp in boarding_points %}
+      {% set bp_students = students_list | selectattr('boarding_point', 'equalto', bp if bp != 'No boarding point set' else none) | list %}
+      {% if bp == 'No boarding point set' %}
+        {% set bp_students = students_list | selectattr('boarding_point', 'none') | list %}
+        {% if not bp_students %}{% set bp_students = students_list | rejectattr('boarding_point') | list %}{% endif %}
+      {% endif %}
+
+      <div class="boarding-group" data-stop="{{ bp }}" style="margin-bottom:20px">
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-lg) var(--radius-lg) 0 0;border-bottom:none">
+          <i class="ti ti-map-pin" style="color:var(--purple);font-size:16px"></i>
+          <span style="font-weight:700;font-size:14px;color:var(--text)">{{ bp }}</span>
+          <span class="badge badge-purple" style="margin-left:auto">{{ bp_students|length }} student{{ 's' if bp_students|length > 1 }}</span>
+        </div>
+        <div class="table-card" style="margin-bottom:0;border-radius:0 0 var(--radius-lg) var(--radius-lg)">
+          <table>
+            <thead><tr><th>Name</th><th>USN / Adm No.</th><th>Phone</th><th>Dept · Sem</th>{% if active_trip %}<th>Boarded</th>{% endif %}</tr></thead>
+            <tbody>
+            {% for s in students_list %}
+            {% if (s.boarding_point or 'No boarding point set') == bp %}
+            <tr class="student-row" data-name="{{ s.name|lower }}" data-usn="{{ (s.usn or '')|lower }}" data-stop="{{ (s.boarding_point or '')|lower }}">
+              <td>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <div style="width:30px;height:30px;border-radius:50%;background:var(--purple-dim);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--purple);flex-shrink:0">{{ s.name[0].upper() }}</div>
+                  <div>
+                    <strong>{{ s.name }}</strong>
+                    {% if s.email %}<div style="font-size:11px;color:var(--text3)">{{ s.email }}</div>{% endif %}
+                  </div>
+                </div>
+              </td>
+              <td>
+                {% if s.usn %}<span class="badge badge-blue" style="margin-bottom:3px">{{ s.usn }}</span><br>{% endif %}
+                {% if s.admission_no %}<span style="font-size:11px;color:var(--text3)">{{ s.admission_no }}</span>{% endif %}
+                {% if not s.usn and not s.admission_no %}—{% endif %}
+              </td>
+              <td>
+                {% if s.phone %}
+                <a href="tel:{{ s.phone }}" style="color:var(--blue);font-size:13px"><i class="ti ti-phone" style="font-size:12px"></i> {{ s.phone }}</a>
+                {% else %}—{% endif %}
+              </td>
+              <td>
+                {% if s.department %}<span style="font-size:12px">{{ s.department }}</span>{% endif %}
+                {% if s.semester %}<br><span style="font-size:11px;color:var(--text3)">Sem {{ s.semester }}</span>{% endif %}
+                {% if not s.department and not s.semester %}—{% endif %}
+              </td>
+              {% if active_trip %}
+              <td>
+                <button onclick="toggleBoard({{ s.id }}, this)"
+                  class="board-btn btn btn-sm {% if loop.index % 3 == 0 %}btn-success{% endif %}"
+                  data-id="{{ s.id }}" data-boarded="0"
+                  style="min-width:90px">
+                  <i class="ti ti-circle" style="font-size:13px"></i> Not boarded
+                </button>
+              </td>
+              {% endif %}
+            </tr>
+            {% endif %}
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endfor %}
+      {% endif %}
+    </div>
+
+  </main>
+</div>
+
+<script>
+// Tab switching
+function showTab(tab) {
+  document.getElementById('tab-trip').style.display = tab === 'trip' ? '' : 'none';
+  document.getElementById('tab-students').style.display = tab === 'students' ? '' : 'none';
+  document.querySelectorAll('.sidebar-nav .nav-item').forEach(el => {
+    el.classList.remove('active-driver');
+  });
+  if (tab === 'trip') document.querySelector('.sidebar-nav .nav-item:first-child').classList.add('active-driver');
+  if (tab === 'students') document.getElementById('nav-students').classList.add('active-driver');
+}
+
+// Search & filter students
+function filterStudents() {
+  const q = document.getElementById('studentSearch').value.toLowerCase();
+  const stop = document.getElementById('stopFilter').value.toLowerCase();
+  document.querySelectorAll('.student-row').forEach(row => {
+    const nameMatch = row.dataset.name.includes(q) || row.dataset.usn.includes(q) || row.dataset.stop.includes(q);
+    const stopMatch = !stop || row.dataset.stop === stop;
+    row.style.display = nameMatch && stopMatch ? '' : 'none';
+  });
+  // Hide empty groups
+  document.querySelectorAll('.boarding-group').forEach(group => {
+    const visible = group.querySelectorAll('.student-row:not([style*="none"])').length;
+    group.style.display = visible ? '' : 'none';
+  });
+}
+
+// Toggle boarding status
+function toggleBoard(studentId, btn) {
+  const isBoarded = btn.dataset.boarded === '1';
+  fetch('/driver/student/toggle-board', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({student_id: studentId})
+  }).then(r => r.json()).then(d => {
+    if (d.ok) {
+      btn.dataset.boarded = d.boarded ? '1' : '0';
+      if (d.boarded) {
+        btn.className = 'board-btn btn btn-sm btn-success';
+        btn.innerHTML = '<i class="ti ti-circle-check" style="font-size:13px"></i> Boarded';
+      } else {
+        btn.className = 'board-btn btn btn-sm';
+        btn.innerHTML = '<i class="ti ti-circle" style="font-size:13px"></i> Not boarded';
+      }
+      updateBoardedCount();
+    }
+  });
+}
+
+function updateBoardedCount() {
+  const total = document.querySelectorAll('.board-btn').length;
+  const boarded = document.querySelectorAll('.board-btn[data-boarded="1"]').length;
+  const el1 = document.getElementById('boardedCount');
+  const el2 = document.getElementById('boardedCount2');
+  if (el1) el1.textContent = boarded;
+  if (el2) el2.textContent = boarded;
+}
+
+// GPS
+let watchId = null;
+
+function requestGPS() {
+  if (!navigator.geolocation) { alert('GPS not supported on this device.'); return; }
+  navigator.geolocation.getCurrentPosition(
+    () => startGPSWatch(),
+    err => showGPSPrompt(err),
+    {enableHighAccuracy: true, timeout: 10000}
+  );
+}
+
+function showGPSPrompt(err) {
+  const prompt = document.getElementById('gpsPrompt');
+  if (prompt) prompt.style.display = 'flex';
+  const bar = document.getElementById('gpsStatusBar');
+  if (bar) { bar.style.background = 'var(--amber-dim)'; bar.style.borderColor = 'var(--amber)'; }
+  const txt = document.getElementById('gpsStatusText');
+  if (txt) txt.textContent = 'GPS permission required — tap "Enable GPS Now"';
+}
+
+function startGPSWatch() {
+  const prompt = document.getElementById('gpsPrompt');
+  if (prompt) prompt.style.display = 'none';
+  const txt = document.getElementById('gpsStatusText');
+  if (txt) txt.textContent = 'GPS sharing active — broadcasting every 5 seconds';
+  watchId = navigator.geolocation.watchPosition(
+    pos => {
+      const lat = pos.coords.latitude, lng = pos.coords.longitude;
+      const speed = pos.coords.speed ? (pos.coords.speed * 3.6).toFixed(1) : 0;
+      const dl = document.getElementById('dispLat'), dg = document.getElementById('dispLng'), ds = document.getElementById('dispSpeed');
+      if (dl) dl.textContent = lat.toFixed(6);
+      if (dg) dg.textContent = lng.toFixed(6);
+      if (ds) ds.textContent = speed + ' km/h';
+      fetch('/driver/location/update', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({lat, lng, speed})
+      });
+    },
+    err => showGPSPrompt(err),
+    {enableHighAccuracy: true, maximumAge: 3000, timeout: 15000}
+  );
+}
+
+{% if active_trip %}
+window.addEventListener('load', () => {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(() => startGPSWatch(), err => showGPSPrompt(err), {enableHighAccuracy: true, timeout: 8000});
+  } else {
+    const p = document.getElementById('gpsPrompt');
+    if (p) p.style.display = 'flex';
+  }
+});
+{% endif %}
+
+window.addEventListener('beforeunload', () => { if (watchId !== null) navigator.geolocation.clearWatch(watchId); });
+</script>
+<style>
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.board-btn{transition:all .2s}
+</style>
+{% endblock %}

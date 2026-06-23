@@ -1,0 +1,84 @@
+{% extends "admin/layout.html" %}
+{% set active = 'routes' %}
+{% block title %}Routes — Admin{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Manage Routes</h1><p>Define bus routes, stops and distances.</p></div>
+<div class="section-header">
+  <h2><i class="ti ti-route" style="color:var(--amber)"></i> Routes ({{ routes|length }})</h2>
+  <button class="btn btn-primary" onclick="openModal('addRouteModal')"><i class="ti ti-plus"></i> Add Route</button>
+</div>
+<div class="table-card">
+  {% if routes %}
+  <table>
+    <thead><tr><th>Name</th><th>From</th><th>To</th><th>Stops</th><th>Distance</th><th>Actions</th></tr></thead>
+    <tbody>
+    {% for r in routes %}
+    <tr>
+      <td><strong>{{ r.name }}</strong></td>
+      <td>{{ r.start_point }}</td>
+      <td>{{ r.end_point }}</td>
+      <td><span class="badge badge-gray">{{ r.stops|fromjson|length }} stops</span></td>
+      <td>{{ r.distance_km }} km</td>
+      <td style="display:flex;gap:6px">
+        <button class="btn btn-sm" onclick='openEditRoute({{ r.id }},{{ r.name|tojson }},{{ r.start_point|tojson }},{{ r.end_point|tojson }},{{ r.stops|tojson }},{{ r.distance_km }})'><i class="ti ti-edit"></i></button>
+        <form method="POST" action="/admin/routes/delete/{{ r.id }}" onsubmit="return confirm('Delete route?')"><button class="btn btn-sm btn-danger"><i class="ti ti-trash"></i></button></form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state"><i class="ti ti-route"></i><p>No routes defined yet.</p></div>
+  {% endif %}
+</div>
+
+<div class="modal-overlay" id="addRouteModal">
+  <div class="modal">
+    <div class="modal-title"><i class="ti ti-route"></i> Add Route</div>
+    <form method="POST" action="/admin/routes/add">
+      <div class="form-group"><label>Route Name</label><input name="name" placeholder="Route A" required></div>
+      <div class="form-row">
+        <div class="form-group"><label>Start Point</label><input name="start_point" placeholder="Rajajinagar" required></div>
+        <div class="form-group"><label>End Point</label><input name="end_point" placeholder="VTU Campus" required></div>
+      </div>
+      <div class="form-group"><label>Stops (comma separated)</label><textarea name="stops" rows="2" placeholder="Stop 1, Stop 2, Stop 3"></textarea></div>
+      <div class="form-group"><label>Distance (km)</label><input type="number" name="distance_km" placeholder="25" step="0.1" min="0"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn" onclick="closeModal('addRouteModal')">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i> Add Route</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="editRouteModal">
+  <div class="modal">
+    <div class="modal-title"><i class="ti ti-edit"></i> Edit Route</div>
+    <form method="POST" id="editRouteForm">
+      <div class="form-group"><label>Route Name</label><input name="name" id="er_name" required></div>
+      <div class="form-row">
+        <div class="form-group"><label>Start Point</label><input name="start_point" id="er_start" required></div>
+        <div class="form-group"><label>End Point</label><input name="end_point" id="er_end" required></div>
+      </div>
+      <div class="form-group"><label>Stops (comma separated)</label><textarea name="stops" id="er_stops" rows="2"></textarea></div>
+      <div class="form-group"><label>Distance (km)</label><input type="number" name="distance_km" id="er_dist" step="0.1" min="0"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn" onclick="closeModal('editRouteModal')">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i> Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+function openEditRoute(id,name,start,end,stops_json,dist){
+  document.getElementById('editRouteForm').action='/admin/routes/edit/'+id;
+  document.getElementById('er_name').value=name;
+  document.getElementById('er_start').value=start;
+  document.getElementById('er_end').value=end;
+  const stops=typeof stops_json==='string'?JSON.parse(stops_json):stops_json;
+  document.getElementById('er_stops').value=stops.join(', ');
+  document.getElementById('er_dist').value=dist;
+  openModal('editRouteModal');
+}
+</script>
+{% endblock %}

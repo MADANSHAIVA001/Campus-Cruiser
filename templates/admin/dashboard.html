@@ -1,0 +1,63 @@
+{% extends "admin/layout.html" %}
+{% set active = 'dashboard' %}
+{% block title %}Dashboard — Admin{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Dashboard</h1>
+  <p>Welcome back, {{ session.name }}. Here's today's overview.</p>
+</div>
+<div class="stats-grid">
+  <div class="stat-card"><div class="stat-label"><i class="ti ti-bus" style="color:var(--blue)"></i> Buses</div><div class="stat-value">{{ stats.buses }}</div><div class="stat-sub">{{ stats.active_trips }} on trip</div></div>
+  <div class="stat-card"><div class="stat-label"><i class="ti ti-user-check" style="color:var(--green)"></i> Drivers</div><div class="stat-value">{{ stats.drivers }}</div><div class="stat-sub">Registered</div></div>
+  <div class="stat-card"><div class="stat-label"><i class="ti ti-users" style="color:var(--purple)"></i> Students</div><div class="stat-value">{{ stats.students }}</div><div class="stat-sub">Enrolled</div></div>
+  <div class="stat-card"><div class="stat-label"><i class="ti ti-route" style="color:var(--amber)"></i> Routes</div><div class="stat-value">{{ stats.routes }}</div><div class="stat-sub">Defined</div></div>
+  <div class="stat-card"><div class="stat-label"><i class="ti ti-map-pin" style="color:var(--red)"></i> Active Trips</div><div class="stat-value" style="color:var(--green)">{{ stats.active_trips }}</div><div class="stat-sub">Live now</div></div>
+</div>
+<div class="section-header">
+  <h2><i class="ti ti-map-pin" style="color:var(--blue)"></i> Active Trips</h2>
+  <a href="/admin/tracking" class="btn btn-sm btn-primary"><i class="ti ti-eye"></i> Live Map</a>
+</div>
+<div class="table-card">
+  {% if active_trips %}
+  <table>
+    <thead><tr><th>Bus</th><th>Driver</th><th>Route</th><th>Started</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for t in active_trips %}
+    <tr>
+      <td><strong>{{ t.reg_no }}</strong></td>
+      <td>{{ t.driver_name }}</td>
+      <td>{{ t.route_name or '—' }}</td>
+      <td>{{ t.start_time[:16] if t.start_time else '—' }}</td>
+      <td><span class="badge badge-green">● Running</span></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state"><i class="ti ti-bus-off"></i><p>No active trips right now</p></div>
+  {% endif %}
+</div>
+<div class="section-header" style="margin-top:8px">
+  <h2><i class="ti ti-bell" style="color:var(--amber)"></i> Recent Notifications</h2>
+  <a href="/admin/notifications" class="btn btn-sm"><i class="ti ti-plus"></i> Send New</a>
+</div>
+<div class="table-card">
+  {% if notifications %}
+  <table>
+    <thead><tr><th>Type</th><th>Title</th><th>Audience</th><th>Sent</th></tr></thead>
+    <tbody>
+    {% for n in notifications %}
+    <tr>
+      <td>{% if n.type=='danger' %}<span class="badge badge-red">🚨 Alert</span>{% elif n.type=='warning' %}<span class="badge badge-amber">⚠ Warning</span>{% else %}<span class="badge badge-blue">ℹ Info</span>{% endif %}</td>
+      <td style="color:var(--text)">{{ n.title }}</td>
+      <td><span class="badge badge-gray">{{ n.target_role }}</span></td>
+      <td>{{ n.created_at[:16] }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state"><p>No notifications sent yet</p></div>
+  {% endif %}
+</div>
+{% endblock %}

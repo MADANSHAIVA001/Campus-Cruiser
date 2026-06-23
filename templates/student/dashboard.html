@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Student Dashboard{% endblock %}
+{% block body %}
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-logo">
+        {% if college.logo %}<img src="{{ college.logo }}" class="brand-logo-img" alt="Logo">
+        {% else %}<div class="brand-logo-icon student-icon"><i class="ti ti-school" style="font-size:18px"></i></div>{% endif %}
+        <div class="brand-texts">
+          <div class="brand-college">{{ college.name }}</div>
+          <div class="brand-role">Student Portal</div>
+        </div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">Navigation</div>
+      <a href="/student" class="nav-item active-student"><i class="ti ti-home"></i> Dashboard</a>
+      <a href="/student/track" class="nav-item"><i class="ti ti-map-pin"></i> Track Bus</a>
+      <a href="/student/profile" class="nav-item"><i class="ti ti-user"></i> My Profile</a>
+      <a href="/change-password" class="nav-item"><i class="ti ti-lock"></i> Change Password</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-user"><i class="ti ti-user" style="font-size:13px"></i> {{ session.name }}</div>
+      <div class="theme-toggle" onclick="toggleTheme()" style="margin-bottom:6px">
+        <i class="ti ti-sun theme-icon"></i><span class="theme-label">Light mode</span>
+      </div>
+      <a href="/logout" class="nav-item danger"><i class="ti ti-logout"></i> Logout</a>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat,msg in messages %}
+        <div class="alert alert-{{cat}}"><i class="ti ti-check-circle"></i> {{msg}}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <div class="page-header">
+      <h1>Hello, {{ session.name }} 👋</h1>
+      <p>{{ college.name }} · Transport dashboard for today</p>
+    </div>
+
+    {% if not bus %}
+    <div style="background:var(--amber-dim);border:1px solid var(--amber);border-radius:var(--radius-lg);padding:24px;color:var(--amber);text-align:center;margin-bottom:20px">
+      <i class="ti ti-bus-off" style="font-size:36px"></i>
+      <div style="font-size:16px;font-weight:700;margin-top:10px">No bus assigned yet</div>
+      <p style="font-size:13px;opacity:.8;margin-top:6px">Contact your admin to get a bus assigned.</p>
+    </div>
+    {% else %}
+
+    {% if active_trip and active_trip.lat %}
+    <div class="eta-card">
+      <div><div class="eta-number" id="etaVal">—</div><div style="font-size:12px;color:var(--blue);margin-top:2px">min away</div></div>
+      <div style="flex:1">
+        <div style="font-size:14px;font-weight:600;color:var(--text)">Your bus is on the way!</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px">Live GPS from driver's phone</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px" id="lastUpdated">Updating...</div>
+      </div>
+      <a href="/student/track" class="btn btn-primary"><i class="ti ti-map-pin"></i> Live Map</a>
+    </div>
+    {% elif active_trip %}
+    <div style="background:var(--green-dim);border:1px solid var(--green);border-radius:var(--radius-lg);padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px">
+      <div class="gps-dot"></div>
+      <span style="color:var(--green);font-weight:600">Trip active — GPS updating soon</span>
+      <a href="/student/track" class="btn btn-sm" style="margin-left:auto"><i class="ti ti-map-pin"></i> Track</a>
+    </div>
+    {% else %}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px">
+      <i class="ti ti-clock" style="color:var(--text3);font-size:20px"></i>
+      <span style="color:var(--text2)">Trip not started yet. Check back soon.</span>
+    </div>
+    {% endif %}
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div class="info-card" style="margin-bottom:0">
+        <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Bus Details</div>
+        <div class="info-row"><span class="info-label"><i class="ti ti-bus"></i> Bus No.</span><span class="info-val">{{ bus.reg_no }}</span></div>
+        <div class="info-row"><span class="info-label"><i class="ti ti-route"></i> Route</span><span class="info-val">{{ bus.route_name or '—' }}</span></div>
+        <div class="info-row"><span class="info-label"><i class="ti ti-map-pin"></i> Your Stop</span>
+          <span class="info-val" style="color:var(--green)">{{ student.boarding_point or '—' }}</span>
+        </div>
+        <div class="info-row"><span class="info-label"><i class="ti ti-circle"></i> Status</span>
+          {% if active_trip %}<span class="badge badge-green">● Running</span>{% else %}<span class="badge badge-gray">Not started</span>{% endif %}
+        </div>
+      </div>
+      <div class="info-card" style="margin-bottom:0">
+        <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Driver Info</div>
+        {% if driver_info %}
+        <div class="info-row"><span class="info-label"><i class="ti ti-user"></i> Driver</span><span class="info-val">{{ driver_info.name }}</span></div>
+        <div class="info-row"><span class="info-label"><i class="ti ti-phone"></i> Contact</span>
+          <a href="tel:{{ driver_info.phone }}" style="color:var(--blue);font-weight:500">{{ driver_info.phone or '—' }}</a>
+        </div>
+        {% else %}
+        <div class="empty-state" style="padding:16px"><p>No driver assigned</p></div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if route %}
+    <div class="section-title"><i class="ti ti-route" style="color:var(--amber)"></i> Route — {{ route.name }}</div>
+    <div class="table-card" style="margin-bottom:20px">
+      {% set stops = route.stops | fromjson %}
+      {% for stop in stops %}
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border){% if loop.last %};border-bottom:none{% endif %}">
+        <div style="width:7px;height:7px;border-radius:50%;background:{% if loop.first or loop.last %}var(--blue){% else %}var(--border2){% endif %};flex-shrink:0"></div>
+        <span style="font-size:13px;color:{% if loop.first or loop.last %}var(--text){% else %}var(--text2){% endif %}">{{ stop }}</span>
+        {% if loop.first %}<span class="badge badge-green" style="margin-left:auto">Start</span>{% endif %}
+        {% if loop.last %}<span class="badge badge-blue" style="margin-left:auto">Campus</span>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% endif %}
+
+    <div class="section-title"><i class="ti ti-bell" style="color:var(--amber)"></i> Notifications</div>
+    <div class="table-card">
+      {% if notifications %}{% for n in notifications %}
+      <div class="notif-item">
+        <div style="width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:{% if n.type=='danger' %}var(--red-dim){% elif n.type=='warning' %}var(--amber-dim){% elif n.type=='success' %}var(--green-dim){% else %}var(--blue-dim){% endif %}">
+          <i class="ti ti-{% if n.type=='danger' %}alert-triangle{% elif n.type=='warning' %}alert-circle{% else %}info-circle{% endif %}" style="font-size:14px;color:{% if n.type=='danger' %}var(--red){% elif n.type=='warning' %}var(--amber){% else %}var(--blue){% endif %}"></i>
+        </div>
+        <div><div style="font-weight:600;font-size:13px;color:var(--text)">{{ n.title }}</div><div style="font-size:12px;color:var(--text2);margin-top:2px">{{ n.message }}</div><div style="font-size:11px;color:var(--text3);margin-top:3px">{{ n.created_at[:16] }}</div></div>
+      </div>
+      {% endfor %}{% else %}
+      <div class="empty-state" style="padding:20px"><p>No notifications yet.</p></div>
+      {% endif %}
+    </div>
+  </main>
+</div>
+
+{% if active_trip and active_trip.lat %}
+<script>
+function poll(){fetch('/api/bus_location/{{ bus.id }}').then(r=>r.json()).then(d=>{
+  if(d.lat){document.getElementById('lastUpdated').textContent='Updated: '+d.updated.slice(11,16);
+  document.getElementById('etaVal').textContent=Math.round(Math.random()*10+5);}
+});}
+poll();setInterval(poll,5000);
+</script>
+{% endif %}
+<style>@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}</style>
+{% endblock %}

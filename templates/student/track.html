@@ -1,0 +1,312 @@
+{% extends "base.html" %}
+{% block title %}Track My Bus — Live{% endblock %}
+{% block extra_styles %}
+.track-wrap{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+.track-header{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:14px;flex-shrink:0;z-index:10}
+.back-btn{width:36px;height:36px;border-radius:50%;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text2);text-decoration:none;flex-shrink:0}
+.back-btn:hover{background:var(--surface2);text-decoration:none;color:var(--text)}
+.bus-avatar{width:42px;height:42px;border-radius:50%;background:var(--blue);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.bus-info{flex:1;min-width:0}
+.bus-name{font-weight:700;font-size:15px;color:var(--text)}
+.bus-status{font-size:12px;color:var(--text2);margin-top:1px;display:flex;align-items:center;gap:5px}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;animation:blink 1.2s ease-in-out infinite;flex-shrink:0}
+.live-dot.waiting{background:var(--amber)}
+.live-dot.offline{background:var(--text3);animation:none}
+#map{flex:1;min-height:0;z-index:1}
+.bottom-sheet{background:var(--bg2);border-top:1px solid var(--border);flex-shrink:0}
+.bs-handle{width:36px;height:4px;border-radius:2px;background:var(--border2);margin:10px auto 0}
+.bs-content{padding:10px 20px 14px}
+.info-pills{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.pill{background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--text2);display:flex;align-items:center;gap:5px}
+.pill span{color:var(--text)}
+.eta-banner{background:linear-gradient(135deg,var(--blue-dim),var(--purple-dim));border:1px solid var(--blue);border-radius:12px;padding:12px 16px;display:flex;align-items:center;gap:14px}
+.eta-num{font-size:32px;font-weight:800;color:var(--blue);line-height:1}
+.no-trip-wrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:40px;text-align:center}
+.waiting-overlay{position:absolute;inset:0;background:rgba(15,17,23,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:100;backdrop-filter:blur(2px)}
+#gpsDebug{position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,.7);color:#0f9;font-size:10px;padding:5px 8px;border-radius:6px;font-family:monospace;z-index:200;pointer-events:none}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes markerPulse{0%{transform:scale(1);opacity:.7}50%{transform:scale(1.5);opacity:.15}100%{transform:scale(1);opacity:.7}}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+{% endblock %}
+{% block body %}
+<div class="track-wrap">
+
+  <!-- Header -->
+  <div class="track-header">
+    <a href="/student" class="back-btn"><i class="ti ti-arrow-left" style="font-size:16px"></i></a>
+    <div class="bus-avatar">🚍</div>
+    <div class="bus-info">
+      <div class="bus-name">{{ bus.reg_no if bus else 'No Bus' }}{% if bus and bus.route_name %} · {{ bus.route_name }}{% endif %}</div>
+      <div class="bus-status">
+        <div class="live-dot waiting" id="statusDot"></div>
+        <span id="statusText">{% if not bus %}No bus assigned{% elif not trip %}Waiting for trip to start...{% else %}Connecting to live GPS...{% endif %}</span>
+      </div>
+    </div>
+    {% if driver_info and driver_info.phone %}
+    <a href="tel:{{ driver_info.phone }}" style="width:38px;height:38px;border-radius:50%;background:var(--green-dim);border:1px solid var(--green);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--green);text-decoration:none" title="Call {{ driver_info.name }}">
+      <i class="ti ti-phone" style="font-size:16px"></i>
+    </a>
+    {% endif %}
+  </div>
+
+  {% if not bus %}
+  <div class="no-trip-wrap">
+    <i class="ti ti-bus-off" style="font-size:52px;color:var(--text3)"></i>
+    <div style="font-size:17px;font-weight:700;color:var(--text)">No bus assigned</div>
+    <p style="color:var(--text2);font-size:13px;max-width:260px">Contact your admin to assign a bus to your account.</p>
+    <a href="/student" class="btn btn-primary"><i class="ti ti-arrow-left"></i> Back to Dashboard</a>
+  </div>
+
+  {% elif not trip %}
+  <div class="no-trip-wrap">
+    <div style="width:64px;height:64px;border-radius:50%;background:var(--amber-dim);border:2px solid var(--amber);display:flex;align-items:center;justify-content:center;font-size:30px">⏳</div>
+    <div style="font-size:17px;font-weight:700;color:var(--text)">Trip not started yet</div>
+    <p style="color:var(--text2);font-size:13px;max-width:280px">Your driver hasn't started the trip. This page will automatically refresh every 10 seconds.</p>
+    <div style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:6px"><div class="live-dot waiting"></div> Checking automatically...</div>
+    <a href="/student" class="btn"><i class="ti ti-arrow-left"></i> Back</a>
+  </div>
+  <script>setTimeout(()=>location.reload(), 10000)</script>
+
+  {% else %}
+  <!-- LIVE MAP SECTION -->
+  <div style="flex:1;position:relative;min-height:0">
+    <div id="map" style="height:100%;width:100%"></div>
+    <!-- Map style switcher -->
+    <div style="position:absolute;top:10px;left:10px;z-index:500;display:flex;gap:6px">
+      <button onclick="changeMapStyle('street')" id="btnStreet"
+        style="background:rgba(24,28,37,.92);border:1.5px solid #4f8ef7;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:700;color:#4f8ef7;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.4)">🗺 Street</button>
+      <button onclick="changeMapStyle('satellite')" id="btnSat"
+        style="background:rgba(24,28,37,.92);border:1.5px solid #636b85;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:700;color:#aaa;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.4)">🛰 Satellite</button>
+    </div>
+    <!-- GPS debug info -->
+    <div id="gpsDebug">No GPS data yet</div>
+    <!-- Waiting overlay - shown until first real GPS -->
+    <div class="waiting-overlay" id="waitingOverlay">
+      <div style="width:52px;height:52px;border:3px solid var(--blue);border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite"></div>
+      <div style="font-weight:700;font-size:15px;color:#fff">Waiting for driver GPS...</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.6);max-width:240px">The driver's phone is sharing location. It will appear here automatically.</div>
+    </div>
+  </div>
+
+  <!-- Bottom sheet -->
+  <div class="bottom-sheet">
+    <div class="bs-handle"></div>
+    <div class="bs-content">
+      <div class="info-pills">
+        <div class="pill"><i class="ti ti-gauge" style="font-size:13px"></i> <span id="pillSpeed">0 km/h</span></div>
+        <div class="pill"><i class="ti ti-clock" style="font-size:13px"></i> <span id="pillUpdated">—</span></div>
+        <div class="pill"><i class="ti ti-map-pin" style="font-size:13px"></i> <span id="pillCoords">—</span></div>
+        {% if driver_info %}<div class="pill"><i class="ti ti-user" style="font-size:13px"></i> <span>{{ driver_info.name }}</span></div>{% endif %}
+      </div>
+      <div class="eta-banner">
+        <div><div class="eta-num" id="etaNum">—</div><div class="eta-label">min away</div></div>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600;color:var(--text)" id="etaMsg">Waiting for GPS signal...</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Bus: {{ bus.reg_no }} · Live tracking</div>
+        </div>
+        <div style="font-size:22px">🚍</div>
+      </div>
+    </div>
+  </div>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+  const busId  = {{ bus.id }};
+  const busReg = '{{ bus.reg_no }}';
+  const routeDistanceKm = {{ route_distance | float }}; // total route distance in km
+
+  // Start map at a neutral view — will snap to real GPS immediately
+  const map = L.map('map', {zoomControl:true, attributionControl:false}).setView([0, 0], 2);
+
+  // Tile layers: Street (CARTO dark) and Hybrid (satellite imagery + road/label overlay)
+  const satelliteBase = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    {maxZoom:20, attribution:'© Esri World Imagery'}
+  );
+  // CARTO Voyager labels-only overlay — gives clear road names & place labels over satellite
+  const hybridLabels = L.tileLayer(
+    'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png',
+    {subdomains:'abcd', maxZoom:20, opacity:0.9}
+  );
+
+  const tileLayers = {
+    street:    L.layerGroup([ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {subdomains:'abcd', maxZoom:20}) ]),
+    satellite: L.layerGroup([ satelliteBase, hybridLabels ])
+  };
+
+  let currentStyle = 'street';
+  tileLayers.street.addTo(map);
+  const attrCtrl = L.control.attribution({position:'bottomleft', prefix:'© OpenStreetMap · CARTO'}).addTo(map);
+
+  function changeMapStyle(style) {
+    if (style === currentStyle) return;
+    map.removeLayer(tileLayers[currentStyle]);
+    tileLayers[style].addTo(map);
+    currentStyle = style;
+    document.getElementById('btnStreet').style.borderColor = style === 'street' ? '#4f8ef7' : '#636b85';
+    document.getElementById('btnStreet').style.color      = style === 'street' ? '#4f8ef7' : '#aaa';
+    document.getElementById('btnSat').style.borderColor   = style === 'satellite' ? '#4f8ef7' : '#636b85';
+    document.getElementById('btnSat').style.color         = style === 'satellite' ? '#4f8ef7' : '#aaa';
+    attrCtrl.setPrefix(style === 'satellite' ? '© Esri World Imagery · © OpenStreetMap' : '© OpenStreetMap · CARTO');
+  }
+
+  // Bus icon with pulse ring
+  function makeBusIcon(speed) {
+    const c = speed > 30 ? '#22c97a' : speed > 3 ? '#4f8ef7' : '#f5a623';
+    return L.divIcon({
+      className:'',
+      html:`<div style="position:relative;width:52px;height:52px">
+        <div style="position:absolute;inset:-10px;border-radius:50%;background:${c}28;animation:markerPulse 2s ease-in-out infinite"></div>
+        <div style="position:absolute;inset:0;border-radius:50%;background:${c};border:3px solid #fff;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 4px 14px rgba(0,0,0,.5)">🚍</div>
+      </div>`,
+      iconSize:[52,52], iconAnchor:[26,26], popupAnchor:[0,-30]
+    });
+  }
+
+  let busMarker = null, pathLine = null, path = [];
+  let autoFollow = true, gpsReceived = false;
+  let prevLat = null, prevLng = null, distanceTravelledKm = 0;
+  let speedSamples = [], etaMinutes = null;
+
+  // Haversine distance between two lat/lng points (returns km)
+  function haversineKm(lat1, lng1, lat2, lng2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat/2)**2 +
+              Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLng/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  // Calculate ETA: remaining distance / rolling average speed
+  function calcETA(currentSpeedKmh) {
+    // Accumulate real speed samples (ignore 0 km/h stale readings)
+    if (currentSpeedKmh > 1) {
+      speedSamples.push(currentSpeedKmh);
+      if (speedSamples.length > 10) speedSamples.shift(); // rolling window of 10
+    }
+    const avgSpeed = speedSamples.length
+      ? speedSamples.reduce((a,b)=>a+b,0) / speedSamples.length
+      : currentSpeedKmh;
+
+    const totalKm = routeDistanceKm || 10; // fallback 10 km if not configured
+    const remaining = Math.max(0, totalKm - distanceTravelledKm);
+
+    if (avgSpeed < 1) return null; // bus stopped, no meaningful ETA
+    return Math.round((remaining / avgSpeed) * 60); // minutes
+  }
+
+  // Follow button
+  const followCtrl = L.control({position:'topright'});
+  followCtrl.onAdd = function(){
+    const d = L.DomUtil.create('div','');
+    d.innerHTML=`<button id="followBtn" onclick="toggleFollow()" style="background:rgba(24,28,37,.9);border:1.5px solid #4f8ef7;border-radius:10px;padding:8px 14px;font-size:12px;font-weight:700;color:#4f8ef7;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 2px 8px rgba(0,0,0,.4)"><i class="ti ti-navigation" style="font-size:14px"></i> Following</button>`;
+    L.DomEvent.disableClickPropagation(d);
+    return d;
+  };
+  followCtrl.addTo(map);
+
+  function toggleFollow(){
+    autoFollow = !autoFollow;
+    const btn = document.getElementById('followBtn');
+    if(autoFollow){
+      btn.innerHTML='<i class="ti ti-navigation" style="font-size:14px"></i> Following';
+      btn.style.color='#4f8ef7'; btn.style.borderColor='#4f8ef7';
+      if(busMarker) map.setView(busMarker.getLatLng(), 16);
+    } else {
+      btn.innerHTML='<i class="ti ti-navigation-off" style="font-size:14px"></i> Follow bus';
+      btn.style.color='#636b85'; btn.style.borderColor='#636b85';
+    }
+  }
+  // Drag stops following — like WhatsApp
+  map.on('dragstart', ()=>{
+    if(autoFollow){
+      autoFollow=false;
+      const b=document.getElementById('followBtn');
+      b.innerHTML='<i class="ti ti-navigation-off" style="font-size:14px"></i> Follow bus';
+      b.style.color='#636b85'; b.style.borderColor='#636b85';
+    }
+  });
+
+  function onGPSReceived(lat, lng, speed, updated) {
+    const pos = [lat, lng];
+
+    // First real GPS — hide overlay and zoom to real location
+    if(!gpsReceived){
+      gpsReceived = true;
+      document.getElementById('waitingOverlay').style.display = 'none';
+      map.setView(pos, 16);
+      document.getElementById('statusDot').className = 'live-dot';
+      document.getElementById('statusText').textContent = 'Live · real-time GPS';
+      document.getElementById('etaMsg').textContent = 'Bus is on the way!';
+    }
+
+    // Update or create bus marker
+    if(!busMarker){
+      busMarker = L.marker(pos, {icon:makeBusIcon(speed)}).addTo(map);
+      busMarker.bindPopup(`<b>🚍 ${busReg}</b><br><small style="color:#555">{{ driver_info.name if driver_info else 'Driver' }}</small><br><small style="color:#888">${lat.toFixed(5)}, ${lng.toFixed(5)}</small>`);
+    } else {
+      busMarker.setLatLng(pos);
+      busMarker.setIcon(makeBusIcon(speed));
+    }
+
+    // Auto-follow
+    if(autoFollow) map.panTo(pos, {animate:true, duration:0.8});
+
+    // Draw path trail
+    path.push(pos);
+    if(path.length > 300) path.shift();
+    if(pathLine) map.removeLayer(pathLine);
+    if(path.length > 1){
+      pathLine = L.polyline(path, {color:'#4f8ef7', weight:3, opacity:0.4, dashArray:'6 4'}).addTo(map);
+    }
+
+    // Accumulate distance travelled using Haversine between consecutive GPS pings
+    if (prevLat !== null && prevLng !== null) {
+      const stepKm = haversineKm(prevLat, prevLng, lat, lng);
+      // Filter out GPS noise (jumps > 1 km in one ping are likely errors)
+      if (stepKm < 1) distanceTravelledKm += stepKm;
+    }
+    prevLat = lat; prevLng = lng;
+
+    // Update UI
+    const spd = parseFloat(speed || 0);
+    document.getElementById('pillSpeed').textContent = spd.toFixed(1) + ' km/h';
+    document.getElementById('pillUpdated').textContent = updated ? updated.slice(11,16) : '—';
+    document.getElementById('pillCoords').textContent = lat.toFixed(4) + ', ' + lng.toFixed(4);
+
+    // Real ETA based on route distance and rolling average speed
+    const eta = calcETA(spd);
+    if (eta !== null && eta >= 0) {
+      document.getElementById('etaNum').textContent = eta === 0 ? '<1' : eta;
+      document.getElementById('etaMsg').textContent = eta === 0
+        ? '🎉 Arriving now!'
+        : `~${eta} min · ${(routeDistanceKm - distanceTravelledKm).toFixed(1)} km remaining`;
+    } else {
+      document.getElementById('etaNum').textContent = '—';
+      document.getElementById('etaMsg').textContent = spd < 1 ? 'Bus is stationary' : 'Calculating ETA…';
+    }
+    document.getElementById('gpsDebug').textContent = `GPS: ${lat.toFixed(6)}, ${lng.toFixed(6)} | ${spd.toFixed(1)}km/h | dist: ${distanceTravelledKm.toFixed(2)}km | ${updated ? updated.slice(11,19) : '—'}`;
+  }
+
+  // SSE — Server pushes updates every 2 seconds
+  const evtSource = new EventSource('/stream/bus/' + busId);
+
+  evtSource.onmessage = function(e){
+    const d = JSON.parse(e.data);
+    if(d.error){ document.getElementById('statusDot').className='live-dot offline'; document.getElementById('statusText').textContent='Connection error · retrying...'; return; }
+    if(d.waiting){ document.getElementById('gpsDebug').textContent='Server connected · waiting for driver GPS...'; return; }
+    onGPSReceived(parseFloat(d.lat), parseFloat(d.lng), parseFloat(d.speed||0), d.updated);
+  };
+
+  evtSource.onerror = function(){
+    document.getElementById('statusDot').className = 'live-dot offline';
+    document.getElementById('statusText').textContent = 'Reconnecting...';
+  };
+
+  window.addEventListener('beforeunload', ()=> evtSource.close());
+  </script>
+  {% endif %}
+</div>
+{% endblock %}
