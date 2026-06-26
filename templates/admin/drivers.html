@@ -1,0 +1,115 @@
+{% extends "admin/layout.html" %}
+{% set active = 'drivers' %}
+{% block title %}Drivers — Admin{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Manage Drivers</h1><p>Admin adds drivers here. Drivers login with their Driver ID and temporary password, then set their own password.</p></div>
+<div class="section-header">
+  <h2><i class="ti ti-user-check" style="color:var(--green)"></i> Drivers ({{ drivers|length }})</h2>
+  <button class="btn btn-primary" onclick="openModal('addDriverModal')"><i class="ti ti-plus"></i> Add Driver</button>
+</div>
+<div class="table-card">
+  {% if drivers %}
+  <table>
+    <thead><tr><th>Name</th><th>Driver ID</th><th>Phone</th><th>License</th><th>Bus</th><th>Temp Password</th><th>Actions</th></tr></thead>
+    <tbody>
+    {% for d in drivers %}
+    <tr>
+      <td><strong>{{ d.name }}</strong><br><span style="font-size:11px;color:var(--text3)">{{ d.email }}</span></td>
+      <td><span class="badge badge-blue">{{ d.driver_id_no or '—' }}</span></td>
+      <td>{{ d.phone or '—' }}</td>
+      <td>{{ d.license_no or '—' }}</td>
+      <td>{% if d.bus_reg %}<span class="badge badge-green">{{ d.bus_reg }}</span>{% else %}<span style="color:var(--text3)">Unassigned</span>{% endif %}</td>
+      <td><code style="font-size:11px;background:var(--bg3);padding:2px 6px;border-radius:4px;color:var(--amber)">{{ d.temp_password or '—' }}</code></td>
+      <td style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-sm" onclick="openAssignDriver({{ d.id }},'{{ d.name }}','{{ d.bus_id or '' }}')"><i class="ti ti-bus"></i> Bus</button>
+        <button class="btn btn-sm btn-amber" onclick="openResetDriver({{ d.id }},'{{ d.name }}')"><i class="ti ti-key"></i> Reset PW</button>
+        <form method="POST" action="/admin/drivers/delete/{{ d.id }}" onsubmit="return confirm('Remove driver {{ d.name }}?')">
+          <button class="btn btn-sm btn-danger"><i class="ti ti-trash"></i></button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state"><i class="ti ti-user-check"></i><p>No drivers added yet. Click "Add Driver" to create driver accounts.</p></div>
+  {% endif %}
+</div>
+
+<!-- Add Driver Modal -->
+<div class="modal-overlay" id="addDriverModal">
+  <div class="modal">
+    <div class="modal-title"><i class="ti ti-user-plus"></i> Add New Driver</div>
+    <form method="POST" action="/admin/drivers/add">
+      <div class="form-row">
+        <div class="form-group"><label>Full Name</label><input name="name" placeholder="Driver name" required></div>
+        <div class="form-group"><label>Email</label><input type="email" name="email" placeholder="driver@email.com" required></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Driver ID No.</label><input name="driver_id_no" placeholder="DRV-001 (for login)" required></div>
+        <div class="form-group"><label>Phone</label><input name="phone" placeholder="9876543210"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>License No.</label><input name="license_no" placeholder="KA-XXXXXXXX"></div>
+        <div class="form-group"><label>Temp Password</label><input name="temp_password" placeholder="e.g. Driver@123" value="Driver@123"></div>
+      </div>
+      <div style="background:var(--blue-dim);border:1px solid var(--blue);border-radius:var(--radius);padding:10px 12px;font-size:12px;color:var(--blue);margin-bottom:4px">
+        <i class="ti ti-info-circle"></i> Driver will login with their <strong>Driver ID No.</strong> and temp password, then must set a new password.
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" onclick="closeModal('addDriverModal')">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i> Add Driver</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Assign Bus Modal -->
+<div class="modal-overlay" id="assignDriverModal">
+  <div class="modal">
+    <div class="modal-title"><i class="ti ti-bus"></i> Assign Bus to Driver</div>
+    <form method="POST" action="/admin/drivers/assign_bus">
+      <input type="hidden" name="driver_id" id="ad_id">
+      <div class="form-group"><label>Driver</label><input type="text" id="ad_name" disabled style="opacity:.6"></div>
+      <div class="form-group"><label>Select Bus</label>
+        <select name="bus_id">
+          <option value="">— Remove assignment —</option>
+          {% for b in buses %}<option value="{{ b.id }}">{{ b.reg_no }} (Cap: {{ b.capacity }})</option>{% endfor %}
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" onclick="closeModal('assignDriverModal')">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i> Assign</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Reset Password Modal -->
+<div class="modal-overlay" id="resetDriverModal">
+  <div class="modal">
+    <div class="modal-title"><i class="ti ti-key"></i> Reset Driver Password</div>
+    <form method="POST" id="resetDriverForm">
+      <div class="form-group"><label>Driver</label><input type="text" id="rd_name" disabled style="opacity:.6"></div>
+      <div class="form-group"><label>New Temporary Password</label><input name="temp_password" placeholder="e.g. Driver@123" required></div>
+      <div style="font-size:12px;color:var(--amber);margin-bottom:4px"><i class="ti ti-alert-triangle"></i> Driver will be required to change this on next login.</div>
+      <div class="modal-footer">
+        <button type="button" class="btn" onclick="closeModal('resetDriverModal')">Cancel</button>
+        <button type="submit" class="btn btn-amber"><i class="ti ti-check"></i> Reset Password</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+function openAssignDriver(id,name,busId){
+  document.getElementById('ad_id').value=id;
+  document.getElementById('ad_name').value=name;
+  openModal('assignDriverModal');
+}
+function openResetDriver(id,name){
+  document.getElementById('resetDriverForm').action='/admin/drivers/set-password/'+id;
+  document.getElementById('rd_name').value=name;
+  openModal('resetDriverModal');
+}
+</script>
+{% endblock %}

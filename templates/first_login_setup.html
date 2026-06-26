@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Setup Account — Campus Cruiser{% endblock %}
+{% block body %}
+<div class="auth-wrap">
+  <div class="auth-card" style="max-width:480px">
+    <div class="auth-logo">
+      {% if college.logo %}<img src="{{ college.logo }}" class="auth-logo-img" alt="Logo">
+      {% else %}<div class="auth-logo-icon">🔐</div>{% endif %}
+      <div class="college-name">{{ college.name }}</div>
+      <h1>Setup Your Account</h1>
+      <p>Set a new password and security question for your account</p>
+    </div>
+    <div class="auth-box">
+      <div class="step-bar">
+        <div class="step-dot active">1</div>
+        <div class="step-line"></div>
+        <div class="step-dot inactive">2</div>
+      </div>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for cat,msg in messages %}
+          <div class="alert alert-{{cat}}"><i class="ti ti-alert-circle"></i> {{msg}}</div>
+        {% endfor %}
+      {% endwith %}
+      <div style="background:var(--blue-dim);border:1px solid var(--blue);border-radius:var(--radius);padding:12px 14px;margin-bottom:18px;font-size:13px;color:var(--blue)">
+        <i class="ti ti-info-circle"></i> This is your first login. Please set a secure password and a security question for account recovery.
+      </div>
+      <form method="POST">
+        <div style="font-size:13px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">New Password</div>
+        <div class="form-group">
+          <label>New Password</label>
+          <div class="pw-wrap">
+            <input type="password" name="new_password" id="np" placeholder="Min 6 characters" required minlength="6"
+                   oninput="checkStrength(this.value,'sf','sl')">
+            <button type="button" class="ti ti-eye pw-eye" id="npBtn" onclick="togglePw('np','npBtn')"></button>
+          </div>
+          <div class="strength-bar"><div class="strength-fill" id="sf"></div></div>
+          <div style="font-size:11px;margin-top:3px;color:var(--text3)" id="sl"></div>
+        </div>
+        <div class="form-group">
+          <label>Confirm Password</label>
+          <div class="pw-wrap">
+            <input type="password" name="confirm_password" id="cp" placeholder="Repeat password" required
+                   oninput="checkMatch()">
+            <button type="button" class="ti ti-eye pw-eye" id="cpBtn" onclick="togglePw('cp','cpBtn')"></button>
+          </div>
+          <div id="matchMsg" style="font-size:11px;margin-top:3px"></div>
+        </div>
+
+        <div style="font-size:13px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin:18px 0 12px">Security Question</div>
+        <div class="form-group">
+          <label>Choose a Security Question</label>
+          <select name="security_question" required>
+            <option value="">— Select a question —</option>
+            <option>What is the name of your first school?</option>
+            <option>What is your mother's maiden name?</option>
+            <option>What was the name of your first pet?</option>
+            <option>What city were you born in?</option>
+            <option>What is your favourite book?</option>
+            <option>What was your childhood nickname?</option>
+            <option>What street did you grow up on?</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Your Answer</label>
+          <input type="text" name="security_answer" placeholder="Your answer (not case-sensitive)" required>
+          <div class="form-hint">Remember this — you'll need it to recover your password</div>
+        </div>
+        <button type="submit" class="auth-submit"><i class="ti ti-check"></i> Complete Setup</button>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+function checkMatch(){
+  const np=document.getElementById('np').value;
+  const cp=document.getElementById('cp').value;
+  const msg=document.getElementById('matchMsg');
+  if(!cp){msg.textContent='';return;}
+  if(cp===np){msg.textContent='✓ Passwords match';msg.style.color='var(--green)';}
+  else{msg.textContent='✗ Does not match';msg.style.color='var(--red)';}
+}
+</script>
+{% endblock %}

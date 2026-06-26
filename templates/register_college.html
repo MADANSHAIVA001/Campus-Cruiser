@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}Register College — Campus Cruiser{% endblock %}
+{% block extra_styles %}
+.reg-wrap{min-height:100vh;display:flex;background:var(--bg)}
+[data-theme="dark"] .reg-wrap{background:radial-gradient(ellipse at 30% 50%,#0d1a3a 0%,var(--bg) 65%)}
+.reg-left{width:380px;flex-shrink:0;background:var(--blue);display:flex;flex-direction:column;justify-content:space-between;padding:40px;position:relative;overflow:hidden}
+.reg-left::before{content:'';position:absolute;top:-80px;right:-80px;width:280px;height:280px;border-radius:50%;background:rgba(255,255,255,.07)}
+.reg-left::after{content:'';position:absolute;bottom:-60px;left:-60px;width:220px;height:220px;border-radius:50%;background:rgba(255,255,255,.05)}
+.reg-right{flex:1;display:flex;align-items:flex-start;justify-content:center;padding:32px 40px;overflow-y:auto}
+.reg-card{width:100%;max-width:540px}
+.reg-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:28px;box-shadow:var(--shadow-lg)}
+.step-section{margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--border)}
+.step-section:last-of-type{margin-bottom:0;padding-bottom:0;border-bottom:none}
+.step-section-title{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.step-num{width:22px;height:22px;border-radius:50%;background:var(--blue);color:#fff;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.auth-submit{width:100%;padding:13px;font-size:15px;font-weight:700;border-radius:var(--radius);border:none;background:var(--blue);color:#fff;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:6px}
+.auth-submit:hover{opacity:.88}
+.college-card-existing{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;display:flex;align-items:center;gap:12px;margin-bottom:8px;text-decoration:none;transition:border-color .15s}
+.college-card-existing:hover{border-color:var(--blue);text-decoration:none}
+@media(max-width:800px){.reg-left{display:none}.reg-right{padding:20px}}
+{% endblock %}
+{% block body %}
+<div class="reg-wrap">
+
+  <!-- LEFT PANEL -->
+  <div class="reg-left">
+    <div style="position:relative;z-index:1">
+      <div style="font-size:48px;margin-bottom:20px">🚍</div>
+      <h1 style="font-size:26px;font-weight:800;color:#fff;line-height:1.2;margin-bottom:12px">Campus Cruiser</h1>
+      <p style="font-size:14px;color:rgba(255,255,255,.8);line-height:1.7;margin-bottom:28px">Smart Transport Management System — each college gets its own isolated data, users and settings.</p>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        {% for icon,text in [('📍','Live GPS tracking'),('👨‍💼','Admin, Student & Driver panels'),('🎓','Academic profiles'),('🌗','Per-college branding & theme'),('🔑','Secure multi-college login')] %}
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:16px">{{ icon }}</span>
+          <span style="font-size:13px;color:rgba(255,255,255,.85)">{{ text }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <div style="position:relative;z-index:1;padding-top:24px;border-top:1px solid rgba(255,255,255,.2);font-size:12px;color:rgba(255,255,255,.5)">
+      Already registered? <a href="/login" style="color:#fff;font-weight:700;text-decoration:underline">Sign in →</a>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="reg-right">
+    <div class="reg-card">
+
+      <!-- Existing colleges -->
+      {% if existing_colleges %}
+      <div style="margin-bottom:24px">
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:8px">
+          <i class="ti ti-building-community" style="color:var(--blue)"></i>
+          Registered Colleges ({{ existing_colleges|length }}) — <span style="color:var(--text2);font-weight:400">click to login</span>
+        </div>
+        {% for ec in existing_colleges %}
+        <a href="/login?college_id={{ ec.id }}" class="college-card-existing">
+          {% if ec.logo %}
+          <img src="{{ ec.logo }}" style="width:36px;height:36px;border-radius:8px;object-fit:cover;flex-shrink:0">
+          {% else %}
+          <div style="width:36px;height:36px;border-radius:8px;background:var(--blue);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🚍</div>
+          {% endif %}
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:14px;color:var(--text)">{{ ec.name }}</div>
+            <div style="font-size:11px;color:var(--text3)">Registered {{ ec.created_at[:10] }}</div>
+          </div>
+          <i class="ti ti-login" style="color:var(--blue);font-size:16px"></i>
+        </a>
+        {% endfor %}
+        <div style="height:1px;background:var(--border);margin:20px 0"></div>
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:16px">➕ Register a New College</div>
+      </div>
+      {% else %}
+      <div style="text-align:center;margin-bottom:28px">
+        <h2 style="font-size:22px;font-weight:800;color:var(--text)">Register Your College</h2>
+        <p style="font-size:13px;color:var(--text2);margin-top:6px">Set up Campus Cruiser for your institution</p>
+      </div>
+      {% endif %}
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for cat,msg in messages %}
+          <div class="alert alert-{{cat}}" style="margin-bottom:16px">
+            <i class="ti ti-{% if cat=='success' %}check-circle{% else %}alert-circle{% endif %}"></i> {{msg}}
+          </div>
+        {% endfor %}
+      {% endwith %}
+
+      <div class="reg-box">
+        <form method="POST" enctype="multipart/form-data">
+
+          <!-- Step 1: College Info -->
+          <div class="step-section">
+            <div class="step-section-title"><span class="step-num">1</span> College Information</div>
+            <div class="form-group">
+              <label>College Name <span style="color:var(--red)">*</span></label>
+              <input type="text" name="college_name" placeholder="e.g. Mysuru Royal Institute of Technology" required>
+            </div>
+            <div class="form-group">
+              <label>College Logo <span style="color:var(--text3);font-weight:400">(optional)</span></label>
+              <input type="file" name="college_logo" accept="image/png,image/jpeg" style="padding:6px">
+              <div class="form-hint">Shown on login page and all dashboards</div>
+            </div>
+          </div>
+
+          <!-- Step 2: Admin Account -->
+          <div class="step-section">
+            <div class="step-section-title"><span class="step-num">2</span> Admin Account</div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Admin Full Name <span style="color:var(--red)">*</span></label>
+                <input type="text" name="admin_name" placeholder="Principal / HOD name" required>
+              </div>
+              <div class="form-group">
+                <label>Admin Email <span style="color:var(--red)">*</span></label>
+                <input type="email" name="admin_email" placeholder="admin@college.edu" required>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Password <span style="color:var(--red)">*</span></label>
+                <div class="pw-wrap">
+                  <input type="password" name="password" id="pw" placeholder="Min 6 characters" required minlength="6" oninput="checkStrength(this.value,'sf','sl')">
+                  <button type="button" class="ti ti-eye pw-eye" id="pwBtn" onclick="togglePw('pw','pwBtn')"></button>
+                </div>
+                <div class="strength-bar"><div class="strength-fill" id="sf"></div></div>
+                <div style="font-size:10px;margin-top:2px" id="sl"></div>
+              </div>
+              <div class="form-group">
+                <label>Confirm Password <span style="color:var(--red)">*</span></label>
+                <div class="pw-wrap">
+                  <input type="password" name="confirm_password" id="cpw" placeholder="Repeat password" required oninput="checkMatch()">
+                  <button type="button" class="ti ti-eye pw-eye" id="cpwBtn" onclick="togglePw('cpw','cpwBtn')"></button>
+                </div>
+                <div id="matchMsg" style="font-size:10px;margin-top:4px"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 3: Security -->
+          <div class="step-section">
+            <div class="step-section-title"><span class="step-num">3</span> Password Recovery</div>
+            <div class="form-group">
+              <label>Security Question <span style="color:var(--red)">*</span></label>
+              <select name="security_question" required>
+                <option value="">— Choose a question —</option>
+                <option>What is the name of your first school?</option>
+                <option>What is your mother's maiden name?</option>
+                <option>What was the name of your first pet?</option>
+                <option>What city were you born in?</option>
+                <option>What is your favourite book?</option>
+                <option>What was your childhood nickname?</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Your Answer <span style="color:var(--red)">*</span></label>
+              <input type="text" name="security_answer" placeholder="Your answer (not case-sensitive)" required>
+            </div>
+          </div>
+
+          <button type="submit" class="auth-submit">
+            <i class="ti ti-building-community" style="font-size:18px"></i>
+            Register College & Create Admin
+          </button>
+          <div style="text-align:center;margin-top:12px;font-size:12px;color:var(--text3)">
+            Each college's data is completely separate and private.
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function checkMatch(){
+  const msg=document.getElementById('matchMsg');
+  const match=document.getElementById('pw').value===document.getElementById('cpw').value;
+  if(!document.getElementById('cpw').value){msg.textContent='';return;}
+  msg.textContent=match?'✓ Passwords match':'✗ Does not match';
+  msg.style.color=match?'var(--green)':'var(--red)';
+}
+</script>
+{% endblock %}

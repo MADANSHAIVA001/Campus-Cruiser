@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Security Question — Campus Cruiser{% endblock %}
+{% block body %}
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-logo">
+      {% if college.logo %}<img src="{{ college.logo }}" class="auth-logo-img" alt="Logo">
+      {% else %}<div class="auth-logo-icon" style="background:var(--amber)">🛡️</div>{% endif %}
+      <div class="college-name">{{ college.name }}</div>
+      <h1>Security Verification</h1>
+      <p>Answer your security question to continue</p>
+    </div>
+    <div class="auth-box">
+      <div class="step-bar">
+        <div class="step-dot done"><i class="ti ti-check" style="font-size:12px"></i></div>
+        <div class="step-line done"></div>
+        <div class="step-dot active">2</div>
+        <div class="step-line"></div>
+        <div class="step-dot inactive">3</div>
+      </div>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for cat,msg in messages %}
+          <div class="alert alert-{{cat}}"><i class="ti ti-alert-circle"></i> {{msg}}</div>
+        {% endfor %}
+      {% endwith %}
+      <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:14px 16px;margin-bottom:18px;display:flex;align-items:flex-start;gap:10px">
+        <i class="ti ti-help-circle" style="color:var(--amber);font-size:18px;flex-shrink:0;margin-top:1px"></i>
+        <span style="font-size:14px;font-weight:600;color:var(--text)">{{ question }}</span>
+      </div>
+      <form method="POST">
+        <div class="form-group">
+          <label>Your Answer</label>
+          <input type="text" name="answer" placeholder="Type your answer..." required autofocus autocomplete="off">
+          <div class="form-hint">Not case-sensitive</div>
+        </div>
+        <button type="submit" class="auth-submit" style="background:var(--amber);color:#111"><i class="ti ti-arrow-right"></i> Verify Answer</button>
+      </form>
+    </div>
+    <div class="auth-link"><a href="/forgot-password">← Try a different account</a></div>
+  </div>
+</div>
+{% endblock %}

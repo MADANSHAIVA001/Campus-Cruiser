@@ -1,0 +1,388 @@
+{% extends "base.html" %}
+{% block title %}Track My Bus — Live{% endblock %}
+{% block extra_styles %}
+.track-wrap{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+.track-header{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;gap:14px;flex-shrink:0;z-index:10}
+.back-btn{width:36px;height:36px;border-radius:50%;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text2);text-decoration:none;flex-shrink:0}
+.back-btn:hover{background:var(--surface2);color:var(--text)}
+.bus-avatar{width:42px;height:42px;border-radius:50%;background:var(--blue);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.bus-info{flex:1;min-width:0}
+.bus-name{font-weight:700;font-size:15px;color:var(--text)}
+.bus-status{font-size:12px;color:var(--text2);margin-top:1px;display:flex;align-items:center;gap:5px}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;animation:blink 1.2s ease-in-out infinite;flex-shrink:0}
+.live-dot.waiting{background:var(--amber)}.live-dot.offline{background:var(--text3);animation:none}
+.bottom-sheet{background:var(--bg2);border-top:1px solid var(--border);flex-shrink:0}
+.bs-handle{width:36px;height:4px;border-radius:2px;background:var(--border2);margin:10px auto 0}
+.bs-content{padding:8px 16px 12px}
+.info-pills{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.pill{background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;color:var(--text2);display:flex;align-items:center;gap:4px}
+.pill span{color:var(--text)}
+.eta-banner{background:linear-gradient(135deg,var(--blue-dim),var(--purple-dim));border:1px solid var(--blue);border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:12px}
+.eta-num{font-size:30px;font-weight:800;color:var(--blue);line-height:1}
+.eta-label{font-size:10px;color:var(--text3);margin-top:1px}
+.no-trip-wrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:40px;text-align:center}
+.waiting-overlay{position:absolute;inset:0;background:rgba(15,17,23,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:400;backdrop-filter:blur(3px)}
+.map-fab{position:absolute;z-index:500;cursor:pointer;background:rgba(15,17,23,.92);border:1.5px solid var(--border);border-radius:10px;padding:6px 10px;font-size:11px;font-weight:700;color:var(--text2);box-shadow:0 2px 10px rgba(0,0,0,.5);display:flex;align-items:center;gap:4px;white-space:nowrap;transition:border-color .15s,color .15s}
+.map-fab.active{border-color:#4f8ef7;color:#4f8ef7}
+.wx-card{position:absolute;bottom:8px;right:8px;z-index:400;background:rgba(15,17,23,.92);border:1px solid var(--border);border-radius:12px;padding:7px 12px;display:flex;align-items:center;gap:8px;box-shadow:0 4px 16px rgba(0,0,0,.5)}
+.wx-icon{font-size:26px;line-height:1}
+.wx-temp{font-size:18px;font-weight:800;color:#fff;line-height:1.1}
+.wx-desc{font-size:10px;color:#aaa;text-transform:capitalize}
+.alert-strip{display:none;position:absolute;top:52px;left:8px;right:8px;z-index:450;border-radius:10px;padding:7px 12px;font-size:12px;font-weight:600;align-items:center;gap:8px;box-shadow:0 4px 16px rgba(0,0,0,.4)}
+.alert-strip.show{display:flex}
+#map .leaflet-tile{filter:none}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+@keyframes busPulse{0%,100%{transform:scale(1);opacity:.7}50%{transform:scale(1.8);opacity:.1}}
+{% endblock %}
+{% block body %}
+<div class="track-wrap">
+  <div class="track-header">
+    <a href="/student" class="back-btn"><i class="ti ti-arrow-left" style="font-size:16px"></i></a>
+    <div class="bus-avatar">🚍</div>
+    <div class="bus-info">
+      <div class="bus-name">{{ bus.reg_no if bus else 'No Bus' }}{% if bus and bus.route_name %} · {{ bus.route_name }}{% endif %}</div>
+      <div class="bus-status">
+        <div class="live-dot waiting" id="statusDot"></div>
+        <span id="statusText">{% if not bus %}No bus assigned{% elif not trip %}Waiting for trip...{% else %}Connecting to GPS...{% endif %}</span>
+      </div>
+    </div>
+    {% if driver_info and driver_info.phone %}
+    <a href="tel:{{ driver_info.phone }}" style="width:36px;height:36px;border-radius:50%;background:var(--green-dim);border:1px solid var(--green);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--green);text-decoration:none">
+      <i class="ti ti-phone" style="font-size:15px"></i>
+    </a>
+    {% endif %}
+  </div>
+
+  {% if not bus %}
+  <div class="no-trip-wrap">
+    <i class="ti ti-bus-off" style="font-size:52px;color:var(--text3)"></i>
+    <div style="font-size:17px;font-weight:700">No bus assigned</div>
+    <a href="/student" class="btn btn-primary">← Back</a>
+  </div>
+  {% elif not trip %}
+  <div class="no-trip-wrap">
+    <div style="width:64px;height:64px;border-radius:50%;background:var(--amber-dim);border:2px solid var(--amber);display:flex;align-items:center;justify-content:center;font-size:30px">⏳</div>
+    <div style="font-size:17px;font-weight:700">Trip not started yet</div>
+    <p style="color:var(--text2);font-size:13px;max-width:280px">Auto-refreshing in 10 seconds...</p>
+    <a href="/student" class="btn">← Back</a>
+  </div>
+  <script>setTimeout(()=>location.reload(),10000)</script>
+
+  {% else %}
+  <div style="flex:1;position:relative;min-height:0">
+    <div id="map" style="height:100%;width:100%;z-index:1"></div>
+
+    <!-- Map style buttons -->
+    <div style="position:absolute;top:10px;left:10px;z-index:500;display:flex;gap:5px">
+      <button class="map-fab active" id="btnStreet"    onclick="setStyle('street')">🗺 Street</button>
+      <button class="map-fab"        id="btnSat"       onclick="setStyle('satellite')">🛰 Satellite</button>
+    </div>
+    <!-- Follow -->
+    <div style="position:absolute;top:10px;right:10px;z-index:500">
+      <button class="map-fab active" id="followBtn" onclick="toggleFollow()">
+        <i class="ti ti-navigation" style="font-size:12px"></i> Following
+      </button>
+    </div>
+
+    <!-- Smart alert strip -->
+    <div class="alert-strip" id="alertStrip">
+      <span id="alertText"></span>
+    </div>
+
+    <!-- Weather card -->
+    <div class="wx-card" id="wxCard" style="display:none">
+      <div class="wx-icon" id="wxIcon">🌤</div>
+      <div>
+        <div class="wx-temp" id="wxTemp">—°C</div>
+        <div class="wx-desc" id="wxDesc">—</div>
+      </div>
+    </div>
+
+    <!-- Waiting overlay -->
+    <div class="waiting-overlay" id="waitingOverlay">
+      <div style="width:48px;height:48px;border:3px solid var(--blue);border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite"></div>
+      <div style="font-weight:700;font-size:15px;color:#fff">Waiting for driver GPS...</div>
+    </div>
+  </div>
+
+  <!-- Bottom sheet -->
+  <div class="bottom-sheet">
+    <div class="bs-handle"></div>
+    <div class="bs-content">
+      <div class="info-pills">
+        <div class="pill"><i class="ti ti-gauge"   style="font-size:12px"></i> <span id="pillSpeed">0 km/h</span></div>
+        <div class="pill"><i class="ti ti-clock"   style="font-size:12px"></i> <span id="pillUpdated">—</span></div>
+        <div class="pill"><i class="ti ti-map-pin" style="font-size:12px"></i> <span id="pillPlace">—</span></div>
+        {% if driver_info %}<div class="pill"><i class="ti ti-user" style="font-size:12px"></i> <span>{{ driver_info.name }}</span></div>{% endif %}
+      </div>
+      <div class="eta-banner">
+        <div><div class="eta-num" id="etaNum">—</div><div class="eta-label">min to next stop</div></div>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600;color:var(--text)" id="etaMsg">Waiting for GPS...</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">{{ bus.route_name or 'Live tracking' }} · {{ bus.reg_no }}</div>
+        </div>
+        <div style="font-size:20px">🚍</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaflet (same as admin tracking — proven to work with Google tiles) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+  const busId      = {{ bus.id }};
+  const busReg     = '{{ bus.reg_no }}';
+  const routeStops = {{ (route.stops if route and route.stops else '[]') | safe }};
+  const routeDistKm = {{ route_distance | float }};
+
+  // ── GOOGLE MAPS TILES (same config as admin tracking) ─────────────────
+  function gTile(lyrs){
+    return L.tileLayer(
+      'https://mt{s}.google.com/vt/lyrs='+lyrs+'&x={x}&y={y}&z={z}&hl=en&gl=IN',
+      {subdomains:'0123',maxZoom:22,attribution:'© Google Maps'}
+    );
+  }
+  const TILES = {
+    street:    () => gTile('m'),       // Google Road map
+    satellite: () => gTile('y')        // Google Hybrid (satellite + labels)
+  };
+
+  const map = L.map('map',{zoomControl:true,attributionControl:false}).setView([12.97,77.59],12);
+  const attrCtrl = L.control.attribution({position:'bottomleft',prefix:'© Google Maps'}).addTo(map);
+  let curTile = TILES.street().addTo(map);
+  let curStyle = 'street';
+
+  function setStyle(s){
+    if(s===curStyle)return;
+    map.removeLayer(curTile);
+    curTile = TILES[s]().addTo(map);
+    curStyle = s;
+    attrCtrl.setPrefix(s==='satellite'?'© Google Maps · Satellite':'© Google Maps');
+    document.getElementById('btnStreet').classList.toggle('active',s==='street');
+    document.getElementById('btnSat').classList.toggle('active',s==='satellite');
+  }
+
+  // ── BUS MARKER ────────────────────────────────────────────────────────
+  let busMarker=null, pathLine=null, pathCoords=[];
+  function busColor(s){return s>30?'#22c97a':s>3?'#4f8ef7':'#f5a623';}
+
+  function makeBusIcon(spd){
+    const c=busColor(spd);
+    return L.divIcon({
+      className:'',
+      html:`<div style="position:relative;width:54px;height:54px">
+        <div style="position:absolute;inset:-12px;border-radius:50%;background:${c}28;animation:busPulse 2s ease-in-out infinite"></div>
+        <div style="position:absolute;inset:0;border-radius:50%;background:${c};border:3px solid #fff;display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 4px 16px rgba(0,0,0,.5)">🚍</div>
+      </div>`,
+      iconSize:[54,54],iconAnchor:[27,27],popupAnchor:[0,-30]
+    });
+  }
+
+  // ── FOLLOW ────────────────────────────────────────────────────────────
+  let autoFollow=true;
+  function toggleFollow(){
+    autoFollow=!autoFollow;
+    const btn=document.getElementById('followBtn');
+    btn.classList.toggle('active',autoFollow);
+    btn.innerHTML=autoFollow
+      ?'<i class="ti ti-navigation" style="font-size:12px"></i> Following'
+      :'<i class="ti ti-navigation-off" style="font-size:12px"></i> Follow bus';
+    if(autoFollow&&busMarker)map.panTo(busMarker.getLatLng(),{animate:true});
+  }
+  map.on('dragstart',()=>{
+    if(autoFollow){
+      autoFollow=false;
+      const b=document.getElementById('followBtn');
+      b.classList.remove('active');
+      b.innerHTML='<i class="ti ti-navigation-off" style="font-size:12px"></i> Follow bus';
+    }
+  });
+
+  // ── REVERSE GEOCODE ───────────────────────────────────────────────────
+  let lastGeoLat=null,lastGeoLng=null,geoTimer=null;
+  function reverseGeocode(lat,lng){
+    if(lastGeoLat&&Math.abs(lat-lastGeoLat)<0.002&&Math.abs(lng-lastGeoLng)<0.002)return;
+    lastGeoLat=lat;lastGeoLng=lng;
+    clearTimeout(geoTimer);
+    geoTimer=setTimeout(()=>{
+      fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=16&addressdetails=1`,
+        {headers:{'Accept-Language':'en','User-Agent':'CampusCruiser/1.0'}})
+      .then(r=>r.json()).then(d=>{
+        const a=d.address||{};
+        const place=[a.road||a.neighbourhood||a.suburb||'',a.city||a.town||a.village||a.county||''].filter(Boolean).join(', ')||d.display_name?.split(',')[0]||'—';
+        document.getElementById('pillPlace').textContent=place;
+        if(busMarker)busMarker.setPopupContent(`<b>🚍 ${busReg}</b><br><small style="color:#666">${place}</small>`);
+      }).catch(()=>{});
+    },1500);
+  }
+
+  // ── WEATHER ───────────────────────────────────────────────────────────
+  const WX={0:'☀️',1:'🌤',2:'⛅',3:'☁️',45:'🌫',48:'🌫',51:'🌦',53:'🌦',55:'🌧',
+    61:'🌧',63:'🌧',65:'🌧',71:'🌨',73:'🌨',75:'❄️',80:'🌦',81:'🌧',82:'⛈',95:'⛈',96:'⛈',99:'⛈'};
+  const WD={0:'Clear',1:'Mostly clear',2:'Partly cloudy',3:'Overcast',45:'Fog',
+    51:'Light drizzle',53:'Drizzle',55:'Heavy drizzle',61:'Light rain',63:'Rain',65:'Heavy rain',
+    71:'Light snow',73:'Snow',75:'Heavy snow',80:'Showers',81:'Heavy showers',82:'Violent showers',
+    95:'Thunderstorm',96:'Thunderstorm+hail',99:'Heavy thunderstorm'};
+  const HEAVY_RAIN=[65,55,82,95,96,99];
+  const SLOW_WX=[51,53,55,61,63,65,71,73,75,80,81,82,95,96,99];
+  let lastWxLat=null,lastWxLng=null,wxTimer=null,lastWxCode=-1;
+
+  function fetchWeather(lat,lng){
+    if(lastWxLat&&Math.abs(lat-lastWxLat)<0.03&&Math.abs(lng-lastWxLng)<0.03)return;
+    lastWxLat=lat;lastWxLng=lng;
+    clearTimeout(wxTimer);
+    wxTimer=setTimeout(()=>{
+      fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weathercode,windspeed_10m&timezone=auto`)
+      .then(r=>r.json()).then(d=>{
+        const c=d.current,code=c.weathercode;
+        lastWxCode=code;
+        document.getElementById('wxIcon').textContent=WX[code]||'🌡';
+        document.getElementById('wxTemp').textContent=Math.round(c.temperature_2m)+'°C';
+        document.getElementById('wxDesc').textContent=(WD[code]||'')+'  💨'+Math.round(c.windspeed_10m)+' km/h';
+        document.getElementById('wxCard').style.display='flex';
+        if(HEAVY_RAIN.includes(code)) showAlert('danger','🌧 Heavy rain at bus location — expect delays');
+        else if(SLOW_WX.includes(code)) showAlert('warning','🌦 Wet weather — bus may slow down');
+      }).catch(()=>{});
+    },2000);
+  }
+
+  // ── ALERT STRIP ───────────────────────────────────────────────────────
+  let alertTimer=null;
+  function showAlert(type,msg){
+    const s=document.getElementById('alertStrip');
+    const cols={danger:['rgba(255,77,77,.18)','#ff4d4d'],warning:['rgba(245,166,35,.18)','#f5a623']};
+    const[bg,border]=cols[type]||cols.warning;
+    s.style.cssText+=`;background:${bg};border:1px solid ${border};color:${border}`;
+    document.getElementById('alertText').textContent=msg;
+    s.classList.add('show');
+    clearTimeout(alertTimer);
+    alertTimer=setTimeout(()=>s.classList.remove('show'),8000);
+  }
+
+  // ── ETA via OSRM ─────────────────────────────────────────────────────
+  let nextStopName='',nextStopCoords=null,speedSamples=[],osrmCache={};
+  let lastEtaLat=null,lastEtaLng=null;
+
+  function haversineM(la1,lo1,la2,lo2){
+    const R=6371000,dLa=(la2-la1)*Math.PI/180,dLo=(lo2-lo1)*Math.PI/180;
+    const a=Math.sin(dLa/2)**2+Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dLo/2)**2;
+    return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+  }
+
+  function findNextStop(){
+    if(!routeStops||routeStops.length===0)return null;
+    const idx=Math.min(Math.floor(pathCoords.length/20),routeStops.length-1);
+    return routeStops[idx];
+  }
+
+  async function geocodeStop(name){
+    try{
+      const r=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(name)}&format=json&limit=1`,
+        {headers:{'Accept-Language':'en','User-Agent':'CampusCruiser/1.0'}});
+      const d=await r.json();
+      if(d&&d[0])return{lat:parseFloat(d[0].lat),lng:parseFloat(d[0].lon)};
+    }catch(e){}
+    return null;
+  }
+
+  async function updateETA(lat,lng,spd){
+    if(spd>1){speedSamples.push(spd);if(speedSamples.length>8)speedSamples.shift();}
+    const avgSpd=speedSamples.length?speedSamples.reduce((a,b)=>a+b)/speedSamples.length:spd;
+    if(lastEtaLat&&haversineM(lastEtaLat,lastEtaLng,lat,lng)<120)return;
+    lastEtaLat=lat;lastEtaLng=lng;
+
+    if(spd<1){
+      document.getElementById('etaNum').textContent='—';
+      document.getElementById('etaMsg').textContent='🚌 Bus is stationary';
+      showAlert('warning','🚌 Bus has stopped — possible traffic or pickup');
+      return;
+    }
+    const stop=findNextStop();
+    if(stop&&stop!==nextStopName){
+      nextStopName=stop;
+      nextStopCoords=await geocodeStop(stop);
+    }
+    if(nextStopCoords){
+      const key=`${lat.toFixed(3)},${lng.toFixed(3)},${nextStopCoords.lat.toFixed(3)},${nextStopCoords.lng.toFixed(3)}`;
+      let eta=osrmCache[key]&&(Date.now()-osrmCache[key].t)<30000?osrmCache[key].v:null;
+      if(!eta){
+        try{
+          const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${lng},${lat};${nextStopCoords.lng},${nextStopCoords.lat}?overview=false`);
+          const d=await r.json();
+          if(d.routes&&d.routes[0]){
+            const freeSec=d.routes[0].duration;
+            const distM=d.routes[0].distance;
+            const freeKmh=(distM/freeSec)*3.6;
+            const trafficF=avgSpd>1?Math.max(1,freeKmh/avgSpd):1;
+            const wxF=HEAVY_RAIN.includes(lastWxCode)?1.3:SLOW_WX.includes(lastWxCode)?1.15:1;
+            eta=Math.max(1,Math.round(freeSec*trafficF*wxF/60));
+            osrmCache[key]={v:eta,t:Date.now()};
+          }
+        }catch(e){}
+      }
+      if(eta){
+        document.getElementById('etaNum').textContent=eta;
+        document.getElementById('etaMsg').textContent=`~${eta} min to "${nextStopName}"`;
+        return;
+      }
+    }
+    // fallback
+    if(nextStopCoords&&avgSpd>0){
+      const d=haversineM(lat,lng,nextStopCoords.lat,nextStopCoords.lng);
+      const eta=Math.max(1,Math.round((d/1000/avgSpd)*60));
+      document.getElementById('etaNum').textContent=eta;
+      document.getElementById('etaMsg').textContent=`~${eta} min · ${(d/1000).toFixed(1)} km to next stop`;
+    }
+  }
+
+  // ── MAIN GPS HANDLER ──────────────────────────────────────────────────
+  let gpsReceived=false;
+  function onGPS(lat,lng,spdRaw,updated){
+    const spd=parseFloat(spdRaw)||0;
+    if(!gpsReceived){
+      gpsReceived=true;
+      document.getElementById('waitingOverlay').style.display='none';
+      document.getElementById('statusDot').className='live-dot';
+      document.getElementById('statusText').textContent='Live · real-time GPS';
+      map.setView([lat,lng],16);
+    }
+    // Update or create bus marker
+    if(!busMarker){
+      busMarker=L.marker([lat,lng],{icon:makeBusIcon(spd)}).addTo(map);
+      busMarker.bindPopup(`<b>🚍 ${busReg}</b>`);
+    } else {
+      busMarker.setLatLng([lat,lng]);
+      busMarker.setIcon(makeBusIcon(spd));
+    }
+    if(autoFollow)map.panTo([lat,lng],{animate:true,duration:0.6});
+
+    // Path trail
+    pathCoords.push([lat,lng]);
+    if(pathCoords.length>400)pathCoords.shift();
+    if(pathLine)map.removeLayer(pathLine);
+    if(pathCoords.length>1)
+      pathLine=L.polyline(pathCoords,{color:'#4f8ef7',weight:3,opacity:0.5,dashArray:'6 4'}).addTo(map);
+
+    document.getElementById('pillSpeed').textContent=spd.toFixed(1)+' km/h';
+    document.getElementById('pillUpdated').textContent=updated?updated.slice(11,16):'—';
+
+    reverseGeocode(lat,lng);
+    fetchWeather(lat,lng);
+    updateETA(lat,lng,spd);
+  }
+
+  // ── SSE ───────────────────────────────────────────────────────────────
+  const es=new EventSource('/stream/bus/'+busId);
+  es.onmessage=e=>{
+    const d=JSON.parse(e.data);
+    if(d.error){document.getElementById('statusDot').className='live-dot offline';document.getElementById('statusText').textContent='Reconnecting...';return;}
+    if(d.waiting)return;
+    onGPS(parseFloat(d.lat),parseFloat(d.lng),d.speed,d.updated);
+  };
+  es.onerror=()=>{document.getElementById('statusDot').className='live-dot offline';document.getElementById('statusText').textContent='Reconnecting...';};
+  window.addEventListener('beforeunload',()=>es.close());
+  </script>
+  {% endif %}
+</div>
+{% endblock %}

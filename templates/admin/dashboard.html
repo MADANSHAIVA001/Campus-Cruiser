@@ -1,0 +1,121 @@
+{% extends "admin/layout.html" %}
+{% set active = 'dashboard' %}
+{% block title %}Dashboard — Admin{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Dashboard</h1>
+  <p>Welcome back, {{ session.name }}. Here's today's overview.</p>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card"><div class="stat-label"><i class="ti ti-bus" style="color:var(--blue)"></i> Buses</div><div class="stat-value">{{ stats.buses }}</div><div class="stat-sub">{{ stats.active_trips }} on trip</div></div>
+  <div class="stat-card"><div class="stat-label"><i class="ti ti-user-check" style="color:var(--green)"></i> Drivers</div><div class="stat-value">{{ stats.drivers }}</div><div class="stat-sub">Registered</div></div>
+  <div class="stat-card"><div class="stat-label"><i class="ti ti-users" style="color:var(--purple)"></i> Students</div><div class="stat-value">{{ stats.students }}</div><div class="stat-sub">Enrolled</div></div>
+  <div class="stat-card"><div class="stat-label"><i class="ti ti-route" style="color:var(--amber)"></i> Routes</div><div class="stat-value">{{ stats.routes }}</div><div class="stat-sub">Defined</div></div>
+  <div class="stat-card"><div class="stat-label"><i class="ti ti-map-pin" style="color:var(--red)"></i> Active Trips</div><div class="stat-value" style="color:var(--green)">{{ stats.active_trips }}</div><div class="stat-sub">Live now</div></div>
+</div>
+
+<!-- Live Weather at Bus Locations (populated by JS below) -->
+<div id="wxAdminRow" style="display:none;margin-bottom:20px">
+  <div class="section-header">
+    <h2><i class="ti ti-cloud" style="color:var(--blue)"></i> Live Weather at Bus Locations</h2>
+  </div>
+  <div id="wxAdminCards" style="display:flex;flex-wrap:wrap;gap:12px"></div>
+</div>
+
+<div class="section-header">
+  <h2><i class="ti ti-map-pin" style="color:var(--blue)"></i> Active Trips</h2>
+  <a href="/admin/tracking" class="btn btn-sm btn-primary"><i class="ti ti-eye"></i> Live Map</a>
+</div>
+<div class="table-card">
+  {% if active_trips %}
+  <table>
+    <thead><tr><th>Bus</th><th>Driver</th><th>Route</th><th>Started</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for t in active_trips %}
+    <tr>
+      <td><strong>{{ t.reg_no }}</strong></td>
+      <td>{{ t.driver_name }}</td>
+      <td>{{ t.route_name or '—' }}</td>
+      <td>{{ t.start_time[:16] if t.start_time else '—' }}</td>
+      <td><span class="badge badge-green">● Running</span></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state"><i class="ti ti-bus-off"></i><p>No active trips right now</p></div>
+  {% endif %}
+</div>
+
+<div class="section-header" style="margin-top:8px">
+  <h2><i class="ti ti-bell" style="color:var(--amber)"></i> Recent Notifications</h2>
+  <a href="/admin/notifications" class="btn btn-sm"><i class="ti ti-plus"></i> Send New</a>
+</div>
+<div class="table-card">
+  {% if notifications %}
+  <table>
+    <thead><tr><th>Type</th><th>Title</th><th>Audience</th><th>Sent</th></tr></thead>
+    <tbody>
+    {% for n in notifications %}
+    <tr>
+      <td>{% if n.type=='danger' %}<span class="badge badge-red">🚨 Alert</span>{% elif n.type=='warning' %}<span class="badge badge-amber">⚠ Warning</span>{% else %}<span class="badge badge-blue">ℹ Info</span>{% endif %}</td>
+      <td style="color:var(--text)">{{ n.title }}</td>
+      <td><span class="badge badge-gray">{{ n.target_role }}</span></td>
+      <td>{{ n.created_at[:16] }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state"><p>No notifications sent yet</p></div>
+  {% endif %}
+</div>
+
+<script>
+const WX_I={0:'☀️',1:'🌤',2:'⛅',3:'☁️',45:'🌫',48:'🌫',51:'🌦',53:'🌦',55:'🌧',
+  61:'🌧',63:'🌧',65:'🌧',71:'🌨',73:'🌨',75:'❄️',80:'🌦',81:'🌧',82:'⛈',95:'⛈',96:'⛈',99:'⛈'};
+const WX_D={0:'Clear',1:'Mostly clear',2:'Partly cloudy',3:'Overcast',45:'Fog',
+  51:'Light drizzle',53:'Drizzle',55:'Heavy drizzle',61:'Light rain',63:'Rain',65:'Heavy rain',
+  71:'Light snow',73:'Snow',75:'Heavy snow',80:'Showers',81:'Heavy showers',82:'Violent showers',
+  95:'Thunderstorm',96:'Thunderstorm+hail',99:'Heavy thunderstorm'};
+const HEAVY=[65,55,82,95,96,99];
+
+// Active trips with GPS (embedded from server)
+const TRIPS=[
+  {% for t in active_trips %}
+  {reg:'{{ t.reg_no }}',lat:{{ t.lat or 'null' }},lng:{{ t.lng or 'null' }},route:'{{ t.route_name or "" }}'},
+  {% endfor %}
+];
+
+async function loadAdminWeather(){
+  const container=document.getElementById('wxAdminCards');
+  container.innerHTML='';
+  let shown=false;
+  for(const t of TRIPS){
+    if(!t.lat)continue;
+    shown=true;
+    try{
+      const wr=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${t.lat}&longitude=${t.lng}&current=temperature_2m,weathercode,windspeed_10m&timezone=auto`);
+      const wd=await wr.json();
+      const c=wd.current, code=c.weathercode;
+      const isHeavy=HEAVY.includes(code);
+      const card=document.createElement('div');
+      card.style.cssText=`background:${isHeavy?'var(--red-dim)':'var(--surface)'};border:1px solid ${isHeavy?'var(--red)':'var(--border)'};border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px;min-width:200px`;
+      card.innerHTML=`<div style="font-size:26px">${WX_I[code]||'🌡'}</div>
+        <div>
+          <div style="font-weight:700;font-size:13px;color:var(--text)">🚍 ${t.reg}${t.route?' · '+t.route:''}</div>
+          <div style="font-size:18px;font-weight:800;color:${isHeavy?'var(--red)':'var(--text)'}">${Math.round(c.temperature_2m)}°C</div>
+          <div style="font-size:11px;color:var(--text2)">${WX_D[code]||''} · 💨${Math.round(c.windspeed_10m)} km/h</div>
+          ${isHeavy?'<div style="font-size:10px;color:var(--red);margin-top:2px;font-weight:600">⚠ Heavy rain — delays expected</div>':''}
+        </div>`;
+      container.appendChild(card);
+    }catch(e){}
+  }
+  if(shown) document.getElementById('wxAdminRow').style.display='block';
+}
+
+loadAdminWeather();
+setInterval(loadAdminWeather, 60000);
+</script>
+{% endblock %}

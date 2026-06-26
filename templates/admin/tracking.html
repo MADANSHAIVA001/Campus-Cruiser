@@ -1,0 +1,188 @@
+{% extends "admin/layout.html" %}
+{% set active = 'tracking' %}
+{% block title %}Live Tracking — Admin{% endblock %}
+{% block extra_styles %}
+#map{height:calc(100vh - 230px);min-height:420px;border-radius:var(--radius-lg);border:1px solid var(--border);z-index:1}
+.bus-card{background:var(--bg2);border:1.5px solid var(--border);border-radius:var(--radius-lg);padding:14px;margin-bottom:10px;cursor:pointer;transition:all .15s}
+.bus-card:hover,.bus-card.selected{border-color:var(--blue);background:var(--blue-dim)}
+.live-pill{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;padding:2px 8px;border-radius:100px}
+.live-pill.gps{background:var(--green-dim);color:var(--green)}
+.live-pill.wait{background:var(--amber-dim);color:var(--amber)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes pulse{0%{transform:scale(1);opacity:.7}50%{transform:scale(1.6);opacity:.15}100%{transform:scale(1);opacity:.7}}
+{% endblock %}
+{% block content %}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+  <div>
+    <h1 style="font-size:22px;font-weight:700">Live Tracking</h1>
+    <p style="font-size:13px;color:var(--text2);margin-top:2px">Real-time GPS · updates every 2 seconds</p>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--green)">
+      <div style="width:8px;height:8px;border-radius:50%;background:var(--green);animation:blink 1.2s ease-in-out infinite"></div>
+      <span id="connStatus">Connecting...</span>
+    </div>
+    <span class="badge badge-blue" id="busCount">0 buses</span>
+    <!-- Map style toggle -->
+    <select id="mapStyle" onchange="changeMapStyle(this.value)" style="font-size:12px;padding:5px 10px;width:auto">
+      <option value="dark">🌙 Dark Map</option>
+      <option value="street">🗺 Street Map</option>
+      <option value="satellite">🛰 Satellite</option>
+      <option value="topo">🏔 Topographic</option>
+    </select>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 300px;gap:16px">
+  <div>
+    <div id="map"></div>
+    <div style="margin-top:8px;font-size:11px;color:var(--text3);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:50%;background:#22c97a;display:inline-block"></span>Fast (>30 km/h)</span>
+      <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:50%;background:#4f8ef7;display:inline-block"></span>Moving</span>
+      <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:50%;background:#f5a623;display:inline-block"></span>Slow/Stopped</span>
+      <span style="margin-left:auto">© OpenStreetMap contributors</span>
+    </div>
+  </div>
+  <div>
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Active Buses</div>
+    <div id="busList">
+      {% if active_trips %}
+        {% for t in active_trips %}
+        <div class="bus-card" id="card-{{ t.reg_no|replace('-','_') }}" onclick="focusBus('{{ t.reg_no }}')">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <div style="font-weight:700;font-size:14px;color:var(--text)">🚍 {{ t.reg_no }}</div>
+            <div class="live-pill {% if t.lat %}gps{% else %}wait{% endif %}" id="pill-{{ t.reg_no|replace('-','_') }}">
+              {% if t.lat %}● GPS{% else %}⏳ Wait{% endif %}
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--text2)"><i class="ti ti-user" style="font-size:11px"></i> {{ t.driver_name }}</div>
+          <div style="font-size:12px;color:var(--text2)"><i class="ti ti-route" style="font-size:11px"></i> {{ t.route_name or 'No route' }}</div>
+          <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--text3)">
+            <span>{{ t.start_time[:16] if t.start_time else '—' }}</span>
+            <span id="spd-{{ t.reg_no|replace('-','_') }}" style="color:var(--blue);font-weight:600">—</span>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="empty-state" style="padding:32px"><i class="ti ti-bus-off" style="font-size:36px"></i><p>No active trips</p></div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// Google Maps tiles — accurate India road names, up-to-date data
+// lyrs: m=road, s=satellite only, y=hybrid (satellite+labels), t=terrain
+function gTile(lyrs, maxZ) {
+  return L.tileLayer(
+    'https://mt{s}.google.com/vt/lyrs='+lyrs+'&x={x}&y={y}&z={z}&hl=en&gl=IN',
+    {subdomains:'0123', maxZoom: maxZ||22, attribution:'© Google Maps'}
+  );
+}
+
+const TILE_GROUPS = {
+  dark:      () => L.layerGroup([ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {subdomains:'abcd', maxZoom:20, attribution:'© CARTO'}) ]),
+  street:    () => L.layerGroup([ gTile('m') ]),
+  satellite: () => L.layerGroup([ gTile('y') ]),   // hybrid = satellite + Google labels
+  topo:      () => L.layerGroup([ gTile('p') ])    // terrain with labels
+};
+const ATTR = {
+  dark: '© CARTO · OpenStreetMap',
+  street: '© Google Maps',
+  satellite: '© Google Maps · Satellite',
+  topo: '© Google Maps · Terrain'
+};
+
+const map = L.map('map', {zoomControl:true, attributionControl:false}).setView([12.9716, 77.5946], 12);
+let tileLayer = TILE_GROUPS.street().addTo(map);
+const attrCtrl = L.control.attribution({position:'bottomleft', prefix: ATTR.street}).addTo(map);
+
+function changeMapStyle(style) {
+  map.removeLayer(tileLayer);
+  tileLayer = TILE_GROUPS[style]().addTo(map);
+  attrCtrl.setPrefix(ATTR[style] || '');
+}
+
+function busIcon(speed) {
+  const c = speed > 30 ? '#22c97a' : speed > 3 ? '#4f8ef7' : '#f5a623';
+  return L.divIcon({
+    className:'',
+    html:`<div style="position:relative;width:46px;height:46px">
+      <div style="position:absolute;inset:-8px;border-radius:50%;background:${c}30;animation:pulse 2s ease-in-out infinite"></div>
+      <div style="position:absolute;inset:0;border-radius:50%;background:${c};border:2.5px solid #fff;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 3px 12px rgba(0,0,0,.4)">🚍</div>
+    </div>`,
+    iconSize:[46,46], iconAnchor:[23,23], popupAnchor:[0,-26]
+  });
+}
+
+const markers={}, paths={}, lines={};
+let firstUpdate=true;
+
+function focusBus(reg) {
+  if(markers[reg]) {
+    map.setView(markers[reg].getLatLng(), 16, {animate:true});
+    markers[reg].openPopup();
+    document.querySelectorAll('.bus-card').forEach(c=>c.classList.remove('selected'));
+    const key=reg.replace(/-/g,'_');
+    const card=document.getElementById('card-'+key);
+    if(card){card.classList.add('selected');card.scrollIntoView({behavior:'smooth',block:'nearest'});}
+  }
+}
+
+const evtSource = new EventSource('/stream/all-buses');
+evtSource.onopen = ()=> document.getElementById('connStatus').textContent='Live · updating every 2s';
+evtSource.onerror = ()=> document.getElementById('connStatus').textContent='Reconnecting...';
+
+evtSource.onmessage = function(e) {
+  const buses = JSON.parse(e.data);
+  document.getElementById('busCount').textContent = buses.length + ' bus' + (buses.length!==1?'es':'');
+  const allPos=[];
+  buses.forEach(b=>{
+    if(!b.lat) return;
+    const pos=[parseFloat(b.lat), parseFloat(b.lng)];
+    const spd=parseFloat(b.speed||0);
+    allPos.push(pos);
+    const key=b.reg_no.replace(/-/g,'_');
+
+    if(markers[b.reg_no]){ markers[b.reg_no].setLatLng(pos); markers[b.reg_no].setIcon(busIcon(spd)); }
+    else {
+      const m=L.marker(pos,{icon:busIcon(spd)}).addTo(map);
+      m.bindPopup(`<div style="font-family:sans-serif;min-width:160px">
+        <b style="font-size:13px">🚍 ${b.reg_no}</b><br>
+        <span style="color:#555;font-size:12px">👤 ${b.driver_name}</span><br>
+        ${b.route_name?`<span style="color:#555;font-size:12px">🛣 ${b.route_name}</span><br>`:''}
+        <span style="color:#888;font-size:11px" id="popup-${key}">⚡ ${spd.toFixed(1)} km/h</span>
+      </div>`);
+      m.on('click',()=>focusBus(b.reg_no));
+      markers[b.reg_no]=m;
+    }
+    // Update popup speed
+    const popEl=document.getElementById('popup-'+key);
+    if(popEl) popEl.textContent=`⚡ ${spd.toFixed(1)} km/h | 📍 ${parseFloat(b.lat).toFixed(4)}, ${parseFloat(b.lng).toFixed(4)}`;
+
+    // Path trail
+    if(!paths[b.reg_no]) paths[b.reg_no]=[];
+    paths[b.reg_no].push(pos);
+    if(paths[b.reg_no].length>200) paths[b.reg_no].shift();
+    if(lines[b.reg_no]) map.removeLayer(lines[b.reg_no]);
+    if(paths[b.reg_no].length>1)
+      lines[b.reg_no]=L.polyline(paths[b.reg_no],{color:'#4f8ef7',weight:3,opacity:.4,dashArray:'6 4'}).addTo(map);
+
+    // Update card
+    const spdEl=document.getElementById('spd-'+key);
+    if(spdEl) spdEl.textContent=spd.toFixed(1)+' km/h';
+    const pill=document.getElementById('pill-'+key);
+    if(pill){pill.className='live-pill gps';pill.textContent='● GPS';}
+  });
+
+  if(firstUpdate && allPos.length>0){
+    firstUpdate=false;
+    allPos.length===1 ? map.setView(allPos[0],15) : map.fitBounds(allPos,{padding:[50,50]});
+  }
+};
+
+window.addEventListener('beforeunload',()=>evtSource.close());
+</script>
+{% endblock %}

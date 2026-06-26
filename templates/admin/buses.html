@@ -1,0 +1,89 @@
+{% extends "admin/layout.html" %}
+{% set active = 'buses' %}
+{% block title %}Buses — Admin{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Manage Buses</h1><p>Add, edit, assign and remove buses from the fleet.</p></div>
+<div class="section-header">
+  <h2><i class="ti ti-bus" style="color:var(--blue)"></i> Fleet ({{ buses|length }})</h2>
+  <button class="btn btn-primary" onclick="openModal('addBusModal')"><i class="ti ti-plus"></i> Add Bus</button>
+</div>
+<div class="table-card">
+  {% if buses %}
+  <table>
+    <thead><tr><th>Reg. No.</th><th>Capacity</th><th>Driver</th><th>Route</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>
+    {% for b in buses %}
+    <tr>
+      <td><strong>{{ b.reg_no }}</strong></td>
+      <td>{{ b.capacity }}</td>
+      <td>{{ b.driver_name or '—' }}</td>
+      <td>{{ b.route_name or '—' }}</td>
+      <td>{% if b.status=='active' %}<span class="badge badge-green">● Active</span>{% elif b.status=='idle' %}<span class="badge badge-gray">Idle</span>{% else %}<span class="badge badge-amber">{{ b.status }}</span>{% endif %}</td>
+      <td style="display:flex;gap:6px">
+        <button class="btn btn-sm" onclick='openEditBus({{ b.id }},"{{ b.reg_no }}",{{ b.capacity }},"{{ b.driver_id or "" }}","{{ b.route_id or "" }}","{{ b.status }}")'><i class="ti ti-edit"></i></button>
+        <form method="POST" action="/admin/buses/delete/{{ b.id }}" onsubmit="return confirm('Delete bus {{ b.reg_no }}?')">
+          <button class="btn btn-sm btn-danger"><i class="ti ti-trash"></i></button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state"><i class="ti ti-bus"></i><p>No buses added yet.</p><button class="btn btn-primary" style="margin-top:12px" onclick="openModal('addBusModal')"><i class="ti ti-plus"></i> Add first bus</button></div>
+  {% endif %}
+</div>
+
+<div class="modal-overlay" id="addBusModal">
+  <div class="modal">
+    <div class="modal-title"><i class="ti ti-bus"></i> Add New Bus</div>
+    <form method="POST" action="/admin/buses/add">
+      <div class="form-row">
+        <div class="form-group"><label>Registration No.</label><input name="reg_no" placeholder="KA-01-1234" required></div>
+        <div class="form-group"><label>Capacity</label><input type="number" name="capacity" placeholder="50" min="1" required></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Assign Driver</label><select name="driver_id"><option value="">— None —</option>{% for d in drivers %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></div>
+        <div class="form-group"><label>Assign Route</label><select name="route_id"><option value="">— None —</option>{% for r in routes %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</select></div>
+      </div>
+      <div class="form-group"><label>Status</label><select name="status"><option value="idle">Idle</option><option value="active">Active</option><option value="maintenance">Maintenance</option></select></div>
+      <div class="modal-footer">
+        <button type="button" class="btn" onclick="closeModal('addBusModal')">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i> Add Bus</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="editBusModal">
+  <div class="modal">
+    <div class="modal-title"><i class="ti ti-edit"></i> Edit Bus</div>
+    <form method="POST" id="editBusForm">
+      <div class="form-row">
+        <div class="form-group"><label>Registration No.</label><input name="reg_no" id="eb_reg" required></div>
+        <div class="form-group"><label>Capacity</label><input type="number" name="capacity" id="eb_cap" min="1" required></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Assign Driver</label><select name="driver_id" id="eb_driver"><option value="">— None —</option>{% for d in drivers %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></div>
+        <div class="form-group"><label>Assign Route</label><select name="route_id" id="eb_route"><option value="">— None —</option>{% for r in routes %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</select></div>
+      </div>
+      <div class="form-group"><label>Status</label><select name="status" id="eb_status"><option value="idle">Idle</option><option value="active">Active</option><option value="maintenance">Maintenance</option></select></div>
+      <div class="modal-footer">
+        <button type="button" class="btn" onclick="closeModal('editBusModal')">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i> Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+function openEditBus(id,reg,cap,driver,route,status){
+  document.getElementById('editBusForm').action='/admin/buses/edit/'+id;
+  document.getElementById('eb_reg').value=reg;
+  document.getElementById('eb_cap').value=cap;
+  document.getElementById('eb_driver').value=driver;
+  document.getElementById('eb_route').value=route;
+  document.getElementById('eb_status').value=status;
+  openModal('editBusModal');
+}
+</script>
+{% endblock %}
